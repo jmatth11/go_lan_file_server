@@ -15,6 +15,9 @@ type FileData struct {
 	Name    string
 }
 
+// package mime/multipart. try using to help with large files
+// example https://play.golang.org/p/MrE9BwNbB1
+// stackoverflow source: http://stackoverflow.com/questions/20765859/go-accepting-http-post-multipart-files
 func PostFile(w http.ResponseWriter, req *http.Request) {
 	decoder := json.NewDecoder(req.Body)
 	var data FileData
