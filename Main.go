@@ -5,18 +5,36 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"time"
 )
 
 type FileData struct {
-	// change Data type to []byte when using base64
-	// []byte looks for base64 encoding otherwise throws error
 	Data    []byte
-	Section int8
 	Name    string
 }
 
 func SpawnNewFile(fd FileData) {
+	path := CreateTodaysFolder()
+	file, err := os.Create(path + "\\" + fd.Name)
+	if err != nil {
+		panic(err)
+	}
+	_, err = file.Write(fd.Data)
+	if err != nil {
+		panic(err)
+	}
+	file.Close()
+}
 
+func CreateTodaysFolder() string {
+	year, month, day := time.Now().Date()
+	name := fmt.Sprintf("%d/%d/%d", year, month, day)
+	_, err := os.Stat(name)
+	if err != nil {
+		os.Mkdir(name, 0666)
+	}
+	return name
 }
 
 // package mime/multipart. try using to help with large files
@@ -30,7 +48,8 @@ func PostFile(w http.ResponseWriter, req *http.Request) {
 		log.Println("Post File Error:", err)
 	}
 	defer req.Body.Close()
-	fmt.Printf("File data, Name: %s Section: %d Data: %s", data.Name, data.Section, string(data.Data))
+	SpawnNewFile(data)
+	fmt.Printf("File data, Name: %s Data: %s", data.Name, string(data.Data))
 	w.Write([]byte("File data recieved.\n"))
 }
 
