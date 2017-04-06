@@ -29,7 +29,7 @@ func SpawnNewFile(fd FileData) {
 
 func CreateTodaysFolder() string {
 	year, month, day := time.Now().Date()
-	name := fmt.Sprintf("%d/%d/%d", year, month, day)
+	name := fmt.Sprintf("%d-%d-%d", year, month, day)
 	_, err := os.Stat(name)
 	if err != nil {
 		os.Mkdir(name, 0666)
