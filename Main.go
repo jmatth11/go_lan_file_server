@@ -180,7 +180,7 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 		 if err != nil {
 			 log.Fatal(err)
 		 }
-		 var dst_data []byte
+		 dst_data := make([]byte, base64.StdEncoding.EncodedLen(len(src_dat)))
 		 base64.StdEncoding.Encode(dst_data, src_dat)
 		 f := FileData{Name:obj.Name(), Data:dst_data}
 		 all_files.Files = append(all_files.Files, f)
