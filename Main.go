@@ -10,10 +10,15 @@ import (
 	"time"
 	"io/ioutil"
 	"strconv"
+	"crypto/sha1"
 )
 
 type FileData struct {
 	Data    []byte
+	// ValidateFile  []byte
+	// ValidateChunk []byte
+	Size 		int64
+	Type		string
 	Name    string
 }
 
@@ -36,15 +41,17 @@ type Folder struct {
  * Method to create the file in the current dates folder.
  * @param FileData
  */
-func SpawnNewFile(fd FileData) {
+func SpawnNewFile(fd FileData) error {
 	path := CreateTodaysFolder()
-	file, err := os.Create(path + "\\" + fd.Name)
+	file, err := os.Create(path + "\\" + fd.Name + fd.Type)
 	if err != nil {
 		log.Fatal(err)
+		return err
 	}
 	_, err = file.Write(fd.Data)
 	if err != nil {
 		log.Fatal(err)
+		return err
 	}
 	file.Close()
 }
@@ -68,15 +75,57 @@ func CreateTodaysFolder() string {
  */
 func PostFile(w http.ResponseWriter, req *http.Request) {
 	decoder := json.NewDecoder(req.Body)
+	data_range_str := req.Header.Get("Content-Range")
 	var data FileData
 	err := decoder.Decode(&data)
 	if err != nil {
 		log.Println("Post File Error:", err)
 	}
 	defer req.Body.Close()
-	SpawnNewFile(data)
+	tmp_file := CreateTempFile(data.Name + data.Type, data.Size + data_range_str.Len() + 1)
+	WriteToTempFile(tmp_file, data, data_range)
+	ValidateTempFile(tmp_file, data)
+	//SpawnNewFile(data)
 	log.Printf("File data, Name: %s", data.Name)
 	w.Write([]byte("File data recieved.\n"))
+}
+
+func CreateTempFile(file_name string, file_size int64) *File {
+	file, err := os.Create(file_name)
+	if err != nil {
+		log.Fatal(err)
+	}
+	file.Truncate(file_size)
+	return file
+}
+
+func WriteToTempFile(file *File, fd FileData, data_range_str string) {
+	data_range := data_range_str.Split("-")
+	start_index := strconv.Atoi(data_range[0])
+	end_index := strconv.Atoi(data_range[1])
+	if (start_index == 0) {
+		start_index, err := file.Write([]byte(data_range_str + "\n"))
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	_, err = file.WriteAt(fd.Data, start_index)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func ValidateTempFile(file *File, fd FileData) {
+	file_info, err := file.Stat()
+	if err != nil {
+		log.Fatal(err)
+	}
+	var read_data []byte = make([]byte, file_info.Size())
+	n, err := File.Read(read_data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//tmp_file_hash := sha1.Sum()
 }
 
 /**
