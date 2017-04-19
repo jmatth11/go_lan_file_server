@@ -40,11 +40,11 @@ func SpawnNewFile(fd FileData) {
 	path := CreateTodaysFolder()
 	file, err := os.Create(path + "\\" + fd.Name)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	_, err = file.Write(fd.Data)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	file.Close()
 }
