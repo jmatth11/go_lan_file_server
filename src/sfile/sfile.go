@@ -33,13 +33,19 @@ type HeaderFormat interface {
 
 // SaveFile object helps interact with files in SAVE format.
 type SaveFile struct {
-	Data     []byte
+	// Actual File Data
+	Data []byte
+	// The Hash of the Data of the file
 	FileHash []byte
-	Size     int64
-	Header   HeaderFormat
+	// The Size of the Data
+	Size int64
+	// The Header for the File. Contains Attributes of the file (name, type, etc..)
+	Header HeaderFormat
 }
 
-//ReadSaveFile is a method to extract data from save file and return a SaveFile object with that data.
+// ReadSaveFile is a method to extract data from save file and return a SaveFile object with that data.
+// Method should only be used when user is querying for file to return a SaveFile object
+// that can be sent as json to user.
 func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 	//
 	sf := &SaveFile{Data: []byte{}, FileHash: fileName, Size: 0, Header: head}
@@ -108,10 +114,17 @@ func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 }
 
 // WriteSaveFile is a method to write out data to save file format.
-func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat, offset int) error {
+// This method should only be used to take data from user and write to file.
+func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat) error {
 	_, err := os.Stat(string(fileName))
-	saveFile := bytes.NewBuffer([]byte(""))
+	fileObj, err := os.OpenFile(string(fileName), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	defer fileObj.Close()
+	if err != nil {
+		saveFile := bytes.NewBuffer([]byte(""))
 		saveFile.WriteString("SAVE")
 		var headerBuffer []byte
 		count, err := head.Read(headerBuffer)
@@ -122,7 +135,33 @@ func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat, offset int) 
 		saveFile.Write(headerBuffer)
 		saveFile.WriteString("DATA")
 		saveFile.Write(intToBytes(int64(len(data))))
+		saveFile.Write(data)
+		_, err = fileObj.Write(saveFile.Bytes())
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+	} else {
+		var fileData []byte
+		_, err = fileObj.Read(fileData)
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+		offset := bytes.Index(fileData, []byte("DATA"))
+		offset += 4
+		origSize := bytesToInt(fileData[offset], fileData[offset+1], fileData[offset+2], fileData[offset+3])
+		newDataSize := origSize + int64(len(data))
+		_, err = fileObj.WriteAt(intToBytes(newDataSize), int64(offset))
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+		_, err = fileObj.WriteAt(data, int64(offset)+origSize)
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
 	}
-
 	return nil
 }
