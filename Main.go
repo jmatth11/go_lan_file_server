@@ -43,27 +43,6 @@ type Folder struct {
 	Count int
 }
 
-// /**
-//  * Method to create the file in the current dates folder.
-//  * @param FileData
-//  */
-// func SpawnNewFile(fd FileData) error {
-// 	path := CreateTodaysFolder()
-// 	// create file
-// 	file, err := os.Create(path + "\\" + fd.Name + fd.Type)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 		return err
-// 	}
-// 	// write the data to the file
-// 	_, err = file.Write(fd.Data)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 		return err
-// 	}
-// 	file.Close()
-// }
-
 // CreateTodaysFolder is a method to create a folder with the current date as its name.
 // @return string  The folder path
 func CreateTodaysFolder() string {
