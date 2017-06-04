@@ -1,67 +1,71 @@
 package main
 
 import (
-	"encoding/json"
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"time"
-	"io/ioutil"
+	"sfile"
 	"strconv"
-	"crypto/sha1"
+	"strings"
+	"time"
 )
 
+// FileData is an object that represents all the data we store for a file saved
 type FileData struct {
-	Data    []byte
-	ValidateFile  []byte
-	ValidateChunk []byte
-	Size 		int64
-	Type		string
-	Name    string
+	Data         []byte
+	ValidateFile []byte
+	StartIndex   int
+	Size         int64
+	Type         string
+	Name         string
 }
 
+// FileDataList is an object to store a list of FileData objects
 type FileDataList struct {
 	Files []FileData
 	Error string
 }
 
+// FoldersList is an object to store a list of Folder objects
 type FoldersList struct {
 	Folders []Folder
-	Error string
+	Error   string
 }
 
+// Folder is an object to store the name of the folder and the count of files it holds
 type Folder struct {
-	Name string
+	Name  string
 	Count int
 }
 
-/**
- * Method to create the file in the current dates folder.
- * @param FileData
- */
-func SpawnNewFile(fd FileData) error {
-	path := CreateTodaysFolder()
-	// create file
-	file, err := os.Create(path + "\\" + fd.Name + fd.Type)
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	// write the data to the file
-	_, err = file.Write(fd.Data)
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	file.Close()
-}
+// /**
+//  * Method to create the file in the current dates folder.
+//  * @param FileData
+//  */
+// func SpawnNewFile(fd FileData) error {
+// 	path := CreateTodaysFolder()
+// 	// create file
+// 	file, err := os.Create(path + "\\" + fd.Name + fd.Type)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 		return err
+// 	}
+// 	// write the data to the file
+// 	_, err = file.Write(fd.Data)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 		return err
+// 	}
+// 	file.Close()
+// }
 
-/**
- * Method to create a folder with the current date as its name.
- * @return string  The folder path
- */
+// CreateTodaysFolder is a method to create a folder with the current date as its name.
+// @return string  The folder path
 func CreateTodaysFolder() string {
 	// Grab date
 	year, month, day := time.Now().Date()
@@ -76,158 +80,127 @@ func CreateTodaysFolder() string {
 	return name
 }
 
-/**
- * Method to handle post request for a file to be saved to the server.
- */
+// createHeaderObject creates a sfile.SimpleHeader object with default attributes
+func createHeaderObject(data FileData) *sfile.SimpleHeader {
+	headerObj := &sfile.SimpleHeader{Attributes: make(map[string]interface{})}
+	headerObj.Attributes["FileName"] = data.Name
+	headerObj.Attributes["FileType"] = data.Type
+	return headerObj
+}
+
+// PostFile is a method to handle post request for a file to be saved to the server.
 func PostFile(w http.ResponseWriter, req *http.Request) {
 	// create json decoder
 	decoder := json.NewDecoder(req.Body)
-	// TODO This will go away and get replaced by post object's ranges
-	data_range_str := req.Header.Get("Content-Range")
 	var data FileData
 	err := decoder.Decode(&data)
 	if err != nil {
 		log.Println("Post File Error:", err)
 	}
 	defer req.Body.Close()
-	// create the temp file. TODO change up how to figure out size because size will be different
-	tmp_file := CreateTempFile(data.Name + data.Type, data.Size + data_range_str.Len() + 1)
-	WriteToTempFile(tmp_file, data, data_range)
-	ValidateTempFile(tmp_file, data)
-	//SpawnNewFile(data)
-	log.Printf("File data, Name: %s", data.Name)
-	// TODO create struct to json.Marshal and send back with an error or not.
-	w.Write([]byte("File data recieved.\n"))
-}
-
-func CreateTempFile(file_name string, file_size int64) *File {
-	// Create file
-	file, err := os.Create(file_name)
+	headerObj := createHeaderObject(data)
+	filePath := bytes.NewBufferString(CreateTodaysFolder() + "\\")
+	_, err = filePath.Write(data.ValidateFile)
+	if err != nil {
+		log.Print(err)
+		errReturn := map[string]string{"error": fmt.Sprintf("Error creating file path for %s; %s", data.Name, err)}
+		writeOutJSONMessage(errReturn, w)
+		return
+	}
+	n, err := sfile.WriteSaveFile(filePath.Bytes(), data.Data, headerObj, data.StartIndex, data.Size)
 	if err != nil {
 		log.Fatal(err)
+		errReturn := map[string]string{"error": fmt.Sprintf("Error while writing file %s; %s", data.Name, err)}
+		writeOutJSONMessage(errReturn, w)
+		return
 	}
-	// Allocate file with certain size
-	file.Truncate(file_size)
-	return file
+	log.Printf("File data, Name: %s. Wrote %d bytes", data.Name, n)
+	writeOutJSONMessage(map[string]string{"error": ""}, w)
 }
 
-func WriteToTempFile(file *File, fd FileData, data_range_str string) {
-	// TODO this will change after creating new file format
-	data_range := data_range_str.Split("-")
-	start_index := strconv.Atoi(data_range[0])
-	end_index := strconv.Atoi(data_range[1])
-	if (start_index == 0) {
-		// TODO Header for new formated file will be different
-		start_index, err := file.Write([]byte(data_range_str + "\n"))
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	_, err = file.WriteAt(fd.Data, start_index)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func ValidateTempFile(file *File, fd FileData) {
-	// TODO This file change when new file format implemented
-	file_info, err := file.Stat()
-	if err != nil {
-		log.Fatal(err)
-	}
-	var read_data []byte = make([]byte, file_info.Size())
-	n, err := File.Read(read_data)
-	if err != nil {
-		log.Fatal(err)
-	}
-	//tmp_file_hash := sha1.Sum()
-}
-
-/**
- * Method to retrieve the list of folder names in the Data path.
- */
+// GetFolders is a method to retrieve the list of folder names in the Data path.
 func GetFolders(w http.ResponseWriter, req *http.Request) {
 	// Grab all folders in Data directory
-	files, err := ioutil.ReadDir("Data\\.")
+	foldersFromDir, err := ioutil.ReadDir("Data\\.")
 	if err != nil {
 		log.Fatal(err)
-		err_folders := FoldersList{Error: "ERROR: Could not read Data directory."}
-		writeOutJsonError(err_folders, w)
+		errFolders := FoldersList{Error: "ERROR: Could not read Data directory."}
+		writeOutJSONMessage(errFolders, w)
 		return
 	}
 
-	folders := FoldersList{Folders:make([]Folder, 0)}
-  // Grab all folder info
-	for _, obj := range files {
+	folders := FoldersList{Folders: make([]Folder, 0)}
+	// Grab all folder info
+	for _, obj := range foldersFromDir {
 		// Grab files in folder
-		sub_files, err := ioutil.ReadDir("Data\\" + obj.Name() + "\\.")
+		subFiles, err := ioutil.ReadDir("Data\\" + obj.Name() + "\\.")
 		if err != nil {
 			log.Fatal(err)
 		}
 		// Create Folder object with its name and its file count
-		f := Folder{Name:obj.Name(), Count:len(sub_files)}
+		f := Folder{Name: obj.Name(), Count: len(subFiles)}
 		folders.Folders = append(folders.Folders, f)
 	}
-	b, err := json.Marshal(folders)
-	if err != nil {
-		log.Fatal(err)
-	}
-	w.Write(b)
+	writeOutJSONMessage(folders, w)
 }
 
-/**
- * Method to accept a GET request for a specific folder in the Data path requesting files
- * from start_index to end_index(exclusively).
- */
+// GetFiles is a method to accept a GET request for a specific folder in the Data path requesting files
+// from startIndex to endIndex(exclusively).
 func GetFiles(w http.ResponseWriter, req *http.Request) {
 	// grab folder name
-	 folder := req.URL.Query().Get("folder")
-	 // grab the start and end range of what files to grab
-	 start_index, _ := strconv.Atoi(req.URL.Query().Get("start_index"))
-	 end_index, _ := strconv.Atoi(req.URL.Query().Get("end_index"))
-	 // check if out of range
-	 if start_index > end_index || start_index < 0 || end_index < 0 {
-		 log.Fatal(fmt.Sprintf("ERROR: folder: %s, start_index: %d, end_index: %d", folder, start_index, end_index))
-		 err_files := FileDataList{Error:fmt.Sprintf("ERROR: Either start or end index is incorrect. start_index: %d, end_index: %d", start_index, end_index)}
-		 writeOutJsonError(err_files, w)
-		 return
-	 }
-	 // get list of files from folder
-	 files, err := ioutil.ReadDir("Data\\" + folder)
-	 if err != nil {
-		 log.Fatal(err)
-		 err_files := FileDataList{Error:"ERROR: Folder given could not be opened. Folder: " + folder}
-		 writeOutJsonError(err_files, w)
-		 return
-	 }
-
-	 all_files := FileDataList{Files:make([]FileData, 0)}
-	 for _, obj := range files[start_index : end_index] {
-
-		 // TODO Will need to change whenever new file format is implemented
-		 src_dat, err := ioutil.ReadFile(obj.Name())
-		 if err != nil {
-			 log.Fatal(err)
-		 }
-		 dst_data := make([]byte, base64.StdEncoding.EncodedLen(len(src_dat)))
-		 base64.StdEncoding.Encode(dst_data, src_dat)
-		 f := FileData{Name:obj.Name(), Data:dst_data}
-		 all_files.Files = append(all_files.Files, f)
-	 }
-	 b, err := json.Marshal(all_files)
-	 if err != nil {
-		 log.Fatal(err)
-	 }
-	 w.Write(b)
+	folder := req.URL.Query().Get("folder")
+	// grab the start and end range of what files to grab
+	startIndex, _ := strconv.Atoi(req.URL.Query().Get("startIndex"))
+	endIndex, _ := strconv.Atoi(req.URL.Query().Get("endIndex"))
+	// check if out of range
+	if startIndex > endIndex || startIndex < 0 || endIndex < 0 {
+		log.Fatal(fmt.Sprintf("ERROR: folder: %s, startIndex: %d, endIndex: %d", folder, startIndex, endIndex))
+		errFiles := FileDataList{Error: fmt.Sprintf("ERROR: Either start or end index is incorrect. startIndex: %d, endIndex: %d", startIndex, endIndex)}
+		writeOutJSONMessage(errFiles, w)
+		return
+	}
+	// get list of files from folder
+	files, err := ioutil.ReadDir("Data\\" + folder)
+	if err != nil {
+		log.Fatal(err)
+		errFiles := FileDataList{Error: "ERROR: Folder given could not be opened. Folder: " + folder}
+		writeOutJSONMessage(errFiles, w)
+		return
+	}
+	// create Header object with empty FileData object because it will be populated from the read
+	headerObj := createHeaderObject(FileData{})
+	allFiles := FileDataList{Files: make([]FileData, 0)}
+	for _, obj := range files[startIndex:endIndex] {
+		// create SaveFile object from reading file
+		saveFileObj, err := sfile.ReadSaveFile([]byte(obj.Name()), headerObj)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// base64 encode data
+		dstData := make([]byte, base64.StdEncoding.EncodedLen(len(saveFileObj.Data)))
+		base64.StdEncoding.Encode(dstData, saveFileObj.Data)
+		headerMap := saveFileObj.Header.GetHeader()
+		// Split on path separator to grab file hash
+		validFile := strings.Split(obj.Name(), "\\")
+		// base64 encode file hash
+		dstValid := make([]byte, base64.StdEncoding.EncodedLen(len(validFile[len(validFile)-1])))
+		base64.StdEncoding.Encode(dstValid, []byte(validFile[len(validFile)-1]))
+		// stringify our attributes
+		headerFileName := fmt.Sprintf("%s", headerMap["FileName"])
+		headerFileType := fmt.Sprintf("%s", headerMap["FileType"])
+		f := FileData{Name: headerFileName, Data: dstData, Type: headerFileType, Size: int64(saveFileObj.Size), StartIndex: 0, ValidateFile: dstValid}
+		allFiles.Files = append(allFiles.Files, f)
+	}
+	writeOutJSONMessage(allFiles, w)
 }
 
 /**
  * Method to take an object json.Marshal it and write it out
  * to the console and the reposewriter.
  * @param obj interface{} A struct value
- * @param w http.ResponseWriter 
+ * @param w http.ResponseWriter
  */
-func writeOutJsonError(obj interface{}, w http.ResponseWriter) {
+func writeOutJSONMessage(obj interface{}, w http.ResponseWriter) {
 	b, err := json.Marshal(obj)
 	if err != nil {
 		log.Fatal(err)

@@ -3,12 +3,12 @@ package sfile
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
-	"log"
 	"os"
 )
 
-func intToBytes(n int64) (a []byte) {
+func intToBytes(n int) (a []byte) {
 	a = make([]byte, 4)
 	a[0] = byte(n)
 	a[1] = byte(n << 8)
@@ -17,8 +17,8 @@ func intToBytes(n int64) (a []byte) {
 	return
 }
 
-func bytesToInt(a, b, c, d byte) int64 {
-	return int64(a) | (int64(b) >> 8) | (int64(c) >> 16) | (int64(d) >> 24)
+func bytesToInt(a, b, c, d byte) int {
+	return int(a) | (int(b) >> 8) | (int(c) >> 16) | (int(d) >> 24)
 }
 
 // HeaderFormat interface for the user to make their header object subscribe to.
@@ -29,16 +29,18 @@ type HeaderFormat interface {
 	io.Writer
 	// GetHeader is the function to return the mapping of attributes for the header.
 	GetHeader() map[string]interface{}
+	// GetHeaderSize is the function to return the size of the header for byte slices
+	GetHeaderSize() (n int, err error)
 }
 
 // SaveFile object helps interact with files in SAVE format.
 type SaveFile struct {
 	// Actual File Data
 	Data []byte
-	// The Hash of the Data of the file
+	// The Hash of the Data of the file, which is also the name of the file on the server
 	FileHash []byte
 	// The Size of the Data
-	Size int64
+	Size int
 	// The Header for the File. Contains Attributes of the file (name, type, etc..)
 	Header HeaderFormat
 }
@@ -53,23 +55,19 @@ func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 	improperFileFormat := errors.New("error: file not formatted properly")
 	file, err := os.Open(string(fileNameStr))
 	if err != nil {
-		log.Fatal(err)
 		return nil, errors.New("error: file could not be read")
 	}
-
+	defer file.Close()
 	data := make([]byte, 8)
 	var offset int64 = 8
 	count, err := file.Read(data)
 	if count < 8 {
-		log.Fatal("File: \"" + fileNameStr + "\" had less than 8 bytes.")
 		return nil, improperFileFormat
 	} else if err != nil {
-		log.Fatal(err)
 		return nil, improperFileFormat
 	}
 
 	if bytes.Compare(data[0:4], []byte("SAVE")) != 0 {
-		log.Fatal("File: \"" + fileNameStr + "\" was not a proper save file.")
 		return nil, improperFileFormat
 	}
 
@@ -78,7 +76,6 @@ func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 		headerInfo := make([]byte, headSize)
 		count, err = file.ReadAt(headerInfo, int64(count))
 		if err != nil {
-			log.Fatal(err)
 			return nil, errors.New("error: could not read header")
 		}
 		_, err = sf.Header.Write(headerInfo)
@@ -91,7 +88,6 @@ func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 	dataInfo := make([]byte, 8)
 	count, err = file.ReadAt(dataInfo, offset)
 	if err != nil {
-		log.Fatal(err)
 		return nil, improperFileFormat
 	}
 
@@ -107,7 +103,6 @@ func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 	sf.Data = make([]byte, dataSize)
 	count, err = file.ReadAt(sf.Data, offset)
 	if err != nil {
-		log.Fatal(err)
 		return nil, errors.New("error: could not read all of the data")
 	}
 	return sf, nil
@@ -115,53 +110,67 @@ func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 
 // WriteSaveFile is a method to write out data to save file format.
 // This method should only be used to take data from user and write to file.
-func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat) error {
+func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat, lastPos int, size int64) (int, error) {
 	_, err := os.Stat(string(fileName))
 	fileObj, err := os.OpenFile(string(fileName), os.O_RDWR|os.O_CREATE, 0666)
+	newPos := 0
 	if err != nil {
-		log.Fatal(err)
-		return err
+		return 0, err
 	}
 	defer fileObj.Close()
 	if err != nil {
 		saveFile := bytes.NewBuffer([]byte(""))
 		saveFile.WriteString("SAVE")
-		var headerBuffer []byte
+		headerSize, err := head.GetHeaderSize()
+		if err != nil {
+			return 0, err
+		}
+		headerBuffer := make([]byte, headerSize)
 		count, err := head.Read(headerBuffer)
 		if err != nil {
-			return err
+			return 0, err
 		}
-		saveFile.Write(intToBytes(int64(count)))
+		saveFile.Write(intToBytes(count))
 		saveFile.Write(headerBuffer)
 		saveFile.WriteString("DATA")
-		saveFile.Write(intToBytes(int64(len(data))))
+		dataSize := len(data)
+		newPos = dataSize
+		saveFile.Write(intToBytes(dataSize))
+		// Truncate file so that the file is created at the correct size.
+		// This is beneficial when doing multiupload
+		err = fileObj.Truncate(int64(saveFile.Len()) + size)
+		if err != nil {
+			return 0, err
+		}
 		saveFile.Write(data)
 		_, err = fileObj.Write(saveFile.Bytes())
 		if err != nil {
-			log.Fatal(err)
-			return err
+			return 0, err
 		}
 	} else {
 		var fileData []byte
 		_, err = fileObj.Read(fileData)
 		if err != nil {
-			log.Fatal(err)
-			return err
+			return 0, err
 		}
 		offset := bytes.Index(fileData, []byte("DATA"))
 		offset += 4
 		origSize := bytesToInt(fileData[offset], fileData[offset+1], fileData[offset+2], fileData[offset+3])
-		newDataSize := origSize + int64(len(data))
-		_, err = fileObj.WriteAt(intToBytes(newDataSize), int64(offset))
-		if err != nil {
-			log.Fatal(err)
-			return err
+		if origSize != lastPos {
+			errMsg := fmt.Sprintf("error: last received index was %d; current received index was %d", origSize, lastPos)
+			return origSize, errors.New(errMsg)
 		}
-		_, err = fileObj.WriteAt(data, int64(offset)+origSize)
+		newDataSize := origSize + len(data)
+		newPos = newDataSize
+		_, err = fileObj.WriteAt(intToBytes(newDataSize), int64(offset))
+		offset += 4
 		if err != nil {
-			log.Fatal(err)
-			return err
+			return 0, err
+		}
+		_, err = fileObj.WriteAt(data, int64(offset+origSize))
+		if err != nil {
+			return 0, err
 		}
 	}
-	return nil
+	return newPos, nil
 }
