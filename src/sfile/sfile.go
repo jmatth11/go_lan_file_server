@@ -28,7 +28,8 @@ type HeaderFormat interface {
 	// Use Write to give the user the header to parse through.
 	io.Writer
 	// GetHeader is the function to return the mapping of attributes for the header.
-	GetHeader() map[string]interface{}
+	// the interface value needs to implement a String method to be stringified.
+	GetHeader() []string
 	// GetHeaderSize is the function to return the size of the header for byte slices
 	GetHeaderSize() (n int, err error)
 }

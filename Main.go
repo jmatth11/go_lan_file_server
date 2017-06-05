@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"os"
 	"sfile"
-	"strconv"
+	"sort"
 	"strings"
 	"time"
 )
@@ -21,8 +21,28 @@ type FileData struct {
 	ValidateFile []byte
 	StartIndex   int
 	Size         int64
-	Type         string
-	Name         string
+	Attributes   map[string]string
+}
+
+// GetFilesWithAttributes is an object to hold the folder you wish to grab files from,
+// the StartIndex and EndIndex of the files you want,
+// And a map with the keys of the attributes you want to extract for the files
+type GetFilesWithAttributes struct {
+	Folder     string
+	StartIndex int
+	EndIndex   int
+	Attributes map[string]string
+}
+
+func (g *GetFilesWithAttributes) sortedAttributeKeys() []string {
+	sortedKeys := make([]string, len(g.Attributes))
+	i := 0
+	for k := range g.Attributes {
+		sortedKeys[i] = k
+		i++
+	}
+	sort.Strings(sortedKeys)
+	return sortedKeys
 }
 
 // FileDataList is an object to store a list of FileData objects
@@ -60,10 +80,13 @@ func CreateTodaysFolder() string {
 }
 
 // createHeaderObject creates a sfile.SimpleHeader object with default attributes
-func createHeaderObject(data FileData) *sfile.SimpleHeader {
+// @param data FileData object passed in to set the Attribute keys in the SimpleHeader object
+// @return *sfile.SimpleHeader object
+func createHeaderObject(data map[string]string) *sfile.SimpleHeader {
 	headerObj := &sfile.SimpleHeader{Attributes: make(map[string]interface{})}
-	headerObj.Attributes["FileName"] = data.Name
-	headerObj.Attributes["FileType"] = data.Type
+	for k, v := range data {
+		headerObj.Attributes[k] = v
+	}
 	return headerObj
 }
 
@@ -77,23 +100,23 @@ func PostFile(w http.ResponseWriter, req *http.Request) {
 		log.Println("Post File Error:", err)
 	}
 	defer req.Body.Close()
-	headerObj := createHeaderObject(data)
+	headerObj := createHeaderObject(data.Attributes)
 	filePath := bytes.NewBufferString(CreateTodaysFolder() + "\\")
 	_, err = filePath.Write(data.ValidateFile)
 	if err != nil {
 		log.Print(err)
-		errReturn := map[string]string{"Error": fmt.Sprintf("Error creating file path for %s; %s", data.Name, err)}
+		errReturn := map[string]string{"Error": fmt.Sprintf("Error creating file path for %s; %s", data.ValidateFile, err)}
 		writeOutJSONMessage(errReturn, w)
 		return
 	}
 	n, err := sfile.WriteSaveFile(filePath.Bytes(), data.Data, headerObj, data.StartIndex, data.Size)
 	if err != nil {
 		log.Fatal(err)
-		errReturn := map[string]string{"Error": fmt.Sprintf("Error while writing file %s; %s", data.Name, err)}
+		errReturn := map[string]string{"Error": fmt.Sprintf("Error while writing file %s; %s", data.ValidateFile, err)}
 		writeOutJSONMessage(errReturn, w)
 		return
 	}
-	log.Printf("File data, Name: %s. Wrote %d bytes", data.Name, n)
+	log.Printf("File data, Name: %s. Wrote %d bytes", data.ValidateFile, n)
 	writeOutJSONMessage(map[string]string{"Error": ""}, w)
 }
 
@@ -123,33 +146,35 @@ func GetFolders(w http.ResponseWriter, req *http.Request) {
 	writeOutJSONMessage(folders, w)
 }
 
-// GetFiles is a method to accept a GET request for a specific folder in the Data path requesting files
-// from startIndex to endIndex(exclusively).
+// GetFiles is a method to accept a POST request for a specific folder in the Data path requesting files
+// from startIndex to endIndex(exclusively). Must also send a dictionary with the keys of the attributes you want to extract
 func GetFiles(w http.ResponseWriter, req *http.Request) {
-	// grab folder name
-	folder := req.URL.Query().Get("folder")
-	// grab the start and end range of what files to grab
-	startIndex, _ := strconv.Atoi(req.URL.Query().Get("startIndex"))
-	endIndex, _ := strconv.Atoi(req.URL.Query().Get("endIndex"))
+	decoder := json.NewDecoder(req.Body)
+	var data GetFilesWithAttributes
+	err := decoder.Decode(&data)
+	if err != nil {
+		log.Println("Post File Error:", err)
+	}
+	defer req.Body.Close()
 	// check if out of range
-	if startIndex > endIndex || startIndex < 0 || endIndex < 0 {
-		log.Fatal(fmt.Sprintf("ERROR: folder: %s, startIndex: %d, endIndex: %d", folder, startIndex, endIndex))
-		errFiles := FileDataList{Error: fmt.Sprintf("ERROR: Either start or end index is incorrect. startIndex: %d, endIndex: %d", startIndex, endIndex)}
+	if data.StartIndex > data.EndIndex || data.StartIndex < 0 || data.EndIndex < 0 {
+		log.Fatal(fmt.Sprintf("ERROR: folder: %s, startIndex: %d, endIndex: %d", data.Folder, data.StartIndex, data.EndIndex))
+		errFiles := FileDataList{Error: fmt.Sprintf("ERROR: Either start or end index is incorrect. startIndex: %d, endIndex: %d", data.StartIndex, data.EndIndex)}
 		writeOutJSONMessage(errFiles, w)
 		return
 	}
 	// get list of files from folder
-	files, err := ioutil.ReadDir("Data\\" + folder)
+	files, err := ioutil.ReadDir("Data\\" + data.Folder)
 	if err != nil {
 		log.Fatal(err)
-		errFiles := FileDataList{Error: "ERROR: Folder given could not be opened. Folder: " + folder}
+		errFiles := FileDataList{Error: "ERROR: Folder given could not be opened. Folder: " + data.Folder}
 		writeOutJSONMessage(errFiles, w)
 		return
 	}
 	// create Header object with empty FileData object because it will be populated from the read
-	headerObj := createHeaderObject(FileData{})
+	headerObj := createHeaderObject(data.Attributes)
 	allFiles := FileDataList{Files: make([]FileData, 0)}
-	for _, obj := range files[startIndex:endIndex] {
+	for _, obj := range files[data.StartIndex:data.EndIndex] {
 		// create SaveFile object from reading file
 		saveFileObj, err := sfile.ReadSaveFile([]byte(obj.Name()), headerObj)
 		if err != nil {
@@ -158,16 +183,18 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 		// base64 encode data
 		dstData := make([]byte, base64.StdEncoding.EncodedLen(len(saveFileObj.Data)))
 		base64.StdEncoding.Encode(dstData, saveFileObj.Data)
+		// map our objects
 		headerMap := saveFileObj.Header.GetHeader()
+		for i, v := range data.sortedAttributeKeys() {
+			data.Attributes[v] = headerMap[i]
+		}
 		// Split on path separator to grab file hash
 		validFile := strings.Split(obj.Name(), "\\")
 		// base64 encode file hash
 		dstValid := make([]byte, base64.StdEncoding.EncodedLen(len(validFile[len(validFile)-1])))
 		base64.StdEncoding.Encode(dstValid, []byte(validFile[len(validFile)-1]))
-		// stringify our attributes
-		headerFileName := fmt.Sprintf("%s", headerMap["FileName"])
-		headerFileType := fmt.Sprintf("%s", headerMap["FileType"])
-		f := FileData{Name: headerFileName, Data: dstData, Type: headerFileType, Size: int64(saveFileObj.Size), StartIndex: 0, ValidateFile: dstValid}
+		// create our object
+		f := FileData{Data: dstData, Size: int64(saveFileObj.Size), StartIndex: 0, ValidateFile: dstValid, Attributes: data.Attributes}
 		allFiles.Files = append(allFiles.Files, f)
 	}
 	writeOutJSONMessage(allFiles, w)
