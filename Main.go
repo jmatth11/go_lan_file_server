@@ -105,19 +105,19 @@ func PostFile(w http.ResponseWriter, req *http.Request) {
 	_, err = filePath.Write(data.ValidateFile)
 	if err != nil {
 		log.Print(err)
-		errReturn := map[string]string{"Count":0, "Error": fmt.Sprintf("Error creating file path for %s; %s", data.ValidateFile, err)}
+		errReturn := map[string]interface{}{"Count": 0, "Error": fmt.Sprintf("Error creating file path for %s; %s", data.ValidateFile, err)}
 		writeOutJSONMessage(errReturn, w)
 		return
 	}
 	n, err := sfile.WriteSaveFile(filePath.Bytes(), data.Data, headerObj, data.StartIndex, data.Size)
 	if err != nil {
 		log.Fatal(err)
-		errReturn := map[string]string{"Count":n, "Error": fmt.Sprintf("Error while writing file %s; %s", data.ValidateFile, err)}
+		errReturn := map[string]interface{}{"Count": n, "Error": fmt.Sprintf("Error while writing file %s; %s", data.ValidateFile, err)}
 		writeOutJSONMessage(errReturn, w)
 		return
 	}
 	log.Printf("File data, Name: %s. Wrote %d bytes", data.ValidateFile, n)
-	writeOutJSONMessage(map[string]string{"Count":n, "Error": ""}, w)
+	writeOutJSONMessage(map[string]interface{}{"Count": n, "Error": ""}, w)
 }
 
 // GetFolders is a method to retrieve the list of folder names in the Data path.
