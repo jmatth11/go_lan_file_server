@@ -11,6 +11,8 @@ import (
 // SimpleHeader is an object that just holds a map object of the attributes
 // it needs to hold and implements the HeaderFormat interface.
 // The Attributes are saved in the map's keys' alphabetical order
+// This implementation is not meant to be the best implementation, it is meant to be
+// a quick way to get someone started that does not want to write their own header.
 type SimpleHeader struct {
 	Attributes map[string]interface{}
 }
