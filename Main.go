@@ -208,15 +208,30 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 func ValidateFile(w http.ResponseWriter, req *http.Request) {
 	errMsg := map[string]interface{}{"Error": "", "Size": 0}
 	folder := req.URL.Query().Get("folder")
-	index, err := strconv.Atoi(req.URL.Query().Get("index"))
+	fileHash := req.URL.Query().Get("hash")
+	if fileHash == "" {
+		index, err := strconv.Atoi(req.URL.Query().Get("index"))
+		if err != nil {
+			errMsg["Error"] = err
+			writeOutJSONMessage(errMsg, w)
+			return
+		}
+		validateFileWithIndex(w, req, folder, index)
+	} else {
+		validateFileWithHash(w, req, folder, fileHash)
+	}
+}
+
+func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder string, index int) {
+	errMsg := map[string]interface{}{"Error": "", "Size": 0}
+	files, err := ioutil.ReadDir("Data\\" + folder)
 	if err != nil {
 		errMsg["Error"] = err
 		writeOutJSONMessage(errMsg, w)
 		return
 	}
-	files, err := ioutil.ReadDir("Data\\" + folder)
-	if err != nil {
-		errMsg["Error"] = err
+	if index >= len(files) || index < 0 {
+		errMsg["Error"] = errors.New("error: index out of range")
 		writeOutJSONMessage(errMsg, w)
 		return
 	}
@@ -228,6 +243,25 @@ func ValidateFile(w http.ResponseWriter, req *http.Request) {
 	}
 	splitFilePath := strings.Split(files[index].Name(), "\\")
 	correctHash := []byte(splitFilePath[len(splitFilePath)-1])
+	checkHash := sha256.Sum256(saveFileObj.Data)
+	if bytes.Compare(correctHash, checkHash[:]) == 0 {
+		writeOutJSONMessage(errMsg, w)
+		return
+	}
+	errMsg["Error"] = errors.New("error: original hash does not match current data hash")
+	errMsg["Size"] = saveFileObj.Size
+	writeOutJSONMessage(errMsg, w)
+}
+
+func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash string) {
+	errMsg := map[string]interface{}{"Error": "", "Size": 0}
+	saveFileObj, err := sfile.ReadSaveFile([]byte("Data\\"+folder+hash), nil)
+	if err != nil {
+		errMsg["Error"] = err
+		writeOutJSONMessage(errMsg, w)
+		return
+	}
+	correctHash := []byte(hash)
 	checkHash := sha256.Sum256(saveFileObj.Data)
 	if bytes.Compare(correctHash, checkHash[:]) == 0 {
 		writeOutJSONMessage(errMsg, w)
