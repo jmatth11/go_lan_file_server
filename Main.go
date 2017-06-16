@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -11,6 +13,7 @@ import (
 	"os"
 	"sfile"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -200,6 +203,41 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 	writeOutJSONMessage(allFiles, w)
 }
 
+// ValidateFile is a GET request that takes in a file hash and checks to see
+// if that file exists on the server as a whole.
+func ValidateFile(w http.ResponseWriter, req *http.Request) {
+	errMsg := map[string]interface{}{"Error": "", "Size": 0}
+	folder := req.URL.Query().Get("folder")
+	index, err := strconv.Atoi(req.URL.Query().Get("index"))
+	if err != nil {
+		errMsg["Error"] = err
+		writeOutJSONMessage(errMsg, w)
+		return
+	}
+	files, err := ioutil.ReadDir("Data\\" + folder)
+	if err != nil {
+		errMsg["Error"] = err
+		writeOutJSONMessage(errMsg, w)
+		return
+	}
+	saveFileObj, err := sfile.ReadSaveFile([]byte(files[index].Name()), nil)
+	if err != nil {
+		errMsg["Error"] = err
+		writeOutJSONMessage(errMsg, w)
+		return
+	}
+	splitFilePath := strings.Split(files[index].Name(), "\\")
+	correctHash := []byte(splitFilePath[len(splitFilePath)-1])
+	checkHash := sha256.Sum256(saveFileObj.Data)
+	if bytes.Compare(correctHash, checkHash[:]) == 0 {
+		writeOutJSONMessage(errMsg, w)
+		return
+	}
+	errMsg["Error"] = errors.New("error: original hash does not match current data hash")
+	errMsg["Size"] = saveFileObj.Size
+	writeOutJSONMessage(errMsg, w)
+}
+
 /**
  * Method to take an object json.Marshal it and write it out
  * to the console and the reposewriter.
@@ -223,5 +261,6 @@ func main() {
 	http.HandleFunc("/post_file", PostFile)
 	http.HandleFunc("/get_folders", GetFolders)
 	http.HandleFunc("/get_files", GetFiles)
+	http.HandleFunc("/validate_file", ValidateFile)
 	http.ListenAndServe(":8080", nil)
 }
