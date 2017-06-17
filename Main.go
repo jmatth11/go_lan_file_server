@@ -11,11 +11,12 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"sfile"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"./src/sfile"
 )
 
 // FileData is an object that represents all the data we store for a file saved
@@ -272,6 +273,12 @@ func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash
 	writeOutJSONMessage(errMsg, w)
 }
 
+// PingServ method listens for any message and sends back a response that lets
+// the user know it is hitting the right address.
+func PingServ(w http.ResponseWriter, req *http.Request) {
+	w.Write([]byte("connected"))
+}
+
 /**
  * Method to take an object json.Marshal it and write it out
  * to the console and the reposewriter.
@@ -292,6 +299,7 @@ func main() {
 	if err != nil {
 		os.Mkdir("Data", 0666)
 	}
+	http.HandleFunc("/ping", PingServ)
 	http.HandleFunc("/post_file", PostFile)
 	http.HandleFunc("/get_folders", GetFolders)
 	http.HandleFunc("/get_files", GetFiles)
