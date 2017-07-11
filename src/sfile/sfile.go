@@ -5,20 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 )
 
 func intToBytes(n int) (a []byte) {
 	a = make([]byte, 4)
 	a[0] = byte(n)
-	a[1] = byte(n << 8)
-	a[2] = byte(n << 16)
-	a[3] = byte(n << 24)
+	a[1] = byte(n >> 8)
+	a[2] = byte(n >> 16)
+	a[3] = byte(n >> 24)
 	return
 }
 
 func bytesToInt(a, b, c, d byte) int {
-	return int(a) | (int(b) >> 8) | (int(c) >> 16) | (int(d) >> 24)
+	return int(a) | (int(b) << 8) | (int(c) << 16) | (int(d) << 24)
 }
 
 // HeaderFormat interface for the user to make their header object subscribe to.
@@ -112,14 +113,15 @@ func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 // WriteSaveFile is a method to write out data to save file format.
 // This method should only be used to take data from user and write to file.
 func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat, lastPos int, size int64) (int, error) {
-	_, err := os.Stat(string(fileName))
+	_, fileAlreadyExists := os.Stat(string(fileName))
+	log.Println("FileName to create:", string(fileName))
 	fileObj, err := os.OpenFile(string(fileName), os.O_RDWR|os.O_CREATE, 0666)
 	newPos := 0
 	if err != nil {
 		return 0, err
 	}
 	defer fileObj.Close()
-	if err != nil {
+	if fileAlreadyExists != nil {
 		saveFile := bytes.NewBuffer([]byte(""))
 		saveFile.WriteString("SAVE")
 		headerSize, err := head.GetHeaderSize()
@@ -149,14 +151,22 @@ func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat, lastPos int,
 			return 0, err
 		}
 	} else {
-		var fileData []byte
-		_, err = fileObj.Read(fileData)
+		fileData := make([]byte, 4)
+		// grab header size
+		_, err = fileObj.ReadAt(fileData, 4)
 		if err != nil {
 			return 0, err
 		}
-		offset := bytes.Index(fileData, []byte("DATA"))
-		offset += 4
-		origSize := bytesToInt(fileData[offset], fileData[offset+1], fileData[offset+2], fileData[offset+3])
+		offset := bytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
+		// add 12 to offset to data size. this accounts for "SAVE", header size, and "DATA"
+		offset += 12
+		fileData = make([]byte, 4)
+		_, err = fileObj.ReadAt(fileData, int64(offset))
+		origSize := bytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
+		if int64(origSize) == size {
+			errMsg := fmt.Sprintf("error: the size of the data matches the size of the original file. The Entire file should already exist.")
+			return 0, errors.New(errMsg)
+		}
 		if origSize != lastPos {
 			errMsg := fmt.Sprintf("error: last received index was %d; current received index was %d", origSize, lastPos)
 			return origSize, errors.New(errMsg)
