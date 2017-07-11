@@ -37,5 +37,5 @@ This was a small project to create a local file server that I could write an acc
   - Same as what /post_file takes as a json format
   
 ### Features still needed
-- Validation of files being fully processed, verifying with sha256
+- update README to document how to validate file with sha256
 - edit file paths to use generic separator so this can work on more than just windows
