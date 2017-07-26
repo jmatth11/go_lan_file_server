@@ -78,6 +78,7 @@ func CreateTodaysFolder() string {
 	_, err := os.Stat(name)
 	// if it doesn't exist, create it.
 	if err != nil {
+		log.Printf("Created folder %s", name)
 		os.Mkdir(name, 0666)
 	}
 	return name
@@ -96,6 +97,7 @@ func createHeaderObject(data map[string]string) *sfile.SimpleHeader {
 
 // PostFile is a method to handle post request for a file to be saved to the server.
 func PostFile(w http.ResponseWriter, req *http.Request) {
+	logServerCall(req, "PostFile")
 	// create json decoder
 	decoder := json.NewDecoder(req.Body)
 	var data FileData
@@ -126,6 +128,7 @@ func PostFile(w http.ResponseWriter, req *http.Request) {
 
 // GetFolders is a method to retrieve the list of folder names in the Data path.
 func GetFolders(w http.ResponseWriter, req *http.Request) {
+	logServerCall(req, "GetFolders")
 	// Grab all folders in Data directory
 	foldersFromDir, err := ioutil.ReadDir("Data\\.")
 	if err != nil {
@@ -153,6 +156,7 @@ func GetFolders(w http.ResponseWriter, req *http.Request) {
 // GetFiles is a method to accept a POST request for a specific folder in the Data path requesting files
 // from startIndex to endIndex(exclusively). Must also send a dictionary with the keys of the attributes you want to extract
 func GetFiles(w http.ResponseWriter, req *http.Request) {
+	logServerCall(req, "GetFiles")
 	decoder := json.NewDecoder(req.Body)
 	var data GetFilesWithAttributes
 	err := decoder.Decode(&data)
@@ -207,6 +211,7 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 // ValidateFile is a GET request that takes in a file hash and checks to see
 // if that file exists on the server as a whole.
 func ValidateFile(w http.ResponseWriter, req *http.Request) {
+	logServerCall(req, "ValidateFile")
 	errMsg := map[string]interface{}{"Error": "", "Size": 0}
 	folder := req.URL.Query().Get("folder")
 	fileHash := req.URL.Query().Get("hash")
@@ -224,6 +229,7 @@ func ValidateFile(w http.ResponseWriter, req *http.Request) {
 }
 
 func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder string, index int) {
+	log.Printf("validating %d from %s", index, folder)
 	errMsg := map[string]interface{}{"Error": "", "Size": 0}
 	files, err := ioutil.ReadDir("Data\\" + folder)
 	if err != nil {
@@ -255,6 +261,7 @@ func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder stri
 }
 
 func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash string) {
+	log.Printf("validating %s from %s", hash, folder)
 	errMsg := map[string]interface{}{"Error": "", "Size": 0}
 	saveFileObj, err := sfile.ReadSaveFile([]byte("Data\\"+folder+hash), nil)
 	if err != nil {
@@ -276,6 +283,7 @@ func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash
 // PingServ method listens for any message and sends back a response that lets
 // the user know it is hitting the right address.
 func PingServ(w http.ResponseWriter, req *http.Request) {
+	logServerCall(req, "PingServ")
 	w.Write([]byte("connected"))
 }
 
@@ -290,13 +298,22 @@ func writeOutJSONMessage(obj interface{}, w http.ResponseWriter) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("writeOutJSONMessage: %s", string(b))
 	w.Write(b)
+}
+
+func logServerCall(req *http.Request, funcName string) {
+	// right now just logging direct ip.
+	// later might want to add req.Header.Get("X-Forwarded-For") to get possible tail of ips.
+	log.Printf("%s|%s|%s %s", req.Method, funcName, "directly from:", req.RemoteAddr)
 }
 
 func main() {
 	// Check if Data Folder exists and if not, create it.
+	log.Println("starting up server on port :8080")
 	_, err := os.Stat("Data")
 	if err != nil {
+		log.Println("creating Initial Data folder")
 		os.Mkdir("Data", 0666)
 	}
 	http.HandleFunc("/ping", PingServ)

@@ -51,7 +51,7 @@ type SaveFile struct {
 // Method should only be used when user is querying for file to return a SaveFile object
 // that can be sent as json to user.
 func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
-	//
+	log.Printf("accessing file for read: %s", string(fileName))
 	sf := &SaveFile{Data: []byte{}, FileHash: fileName, Size: 0, Header: head}
 	fileNameStr := string(fileName)
 	improperFileFormat := errors.New("error: file not formatted properly")
@@ -113,6 +113,7 @@ func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 // WriteSaveFile is a method to write out data to save file format.
 // This method should only be used to take data from user and write to file.
 func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat, lastPos int, size int64) (int, error) {
+	log.Printf("accessing file for write: %s", string(fileName))
 	_, fileAlreadyExists := os.Stat(string(fileName))
 	log.Println("FileName to create:", string(fileName))
 	fileObj, err := os.OpenFile(string(fileName), os.O_RDWR|os.O_CREATE, 0666)
@@ -161,6 +162,7 @@ func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat, lastPos int,
 		// add 12 to offset to data size. this accounts for "SAVE", header size, and "DATA"
 		offset += 12
 		fileData = make([]byte, 4)
+		// grab DATA size
 		_, err = fileObj.ReadAt(fileData, int64(offset))
 		origSize := bytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
 		if int64(origSize) == size {
