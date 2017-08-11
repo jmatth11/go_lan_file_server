@@ -108,7 +108,7 @@ func ValidateFile(w http.ResponseWriter, req *http.Request) {
 //
 func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder string, index int) {
 	Logf("validating %d from %s", index, folder)
-	errMsg := map[string]interface{}{"Error": "", "Size": 0}
+	errMsg := map[string]interface{}{"Error": ""}
 	files, err := ioutil.ReadDir("Data\\" + folder)
 	if err != nil {
 		errMsg["Error"] = err
@@ -134,14 +134,13 @@ func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder stri
 		return
 	}
 	errMsg["Error"] = errors.New("error: original hash does not match current data hash")
-	errMsg["Size"] = saveFileObj.Size
 	WriteOutJSONMessage(errMsg, w)
 }
 
 //
 func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash string) {
 	Logf("validating %s from %s", hash, folder)
-	errMsg := map[string]interface{}{"Error": "", "Size": 0}
+	errMsg := map[string]interface{}{"Error": ""}
 	saveFileObj, err := sfile.ReadSaveFile([]byte("Data\\"+folder+hash), nil)
 	if err != nil {
 		errMsg["Error"] = err
@@ -154,8 +153,7 @@ func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash
 		WriteOutJSONMessage(errMsg, w)
 		return
 	}
-	errMsg["Error"] = errors.New("error: original hash does not match current data hash")
-	errMsg["Size"] = saveFileObj.Size
+	errMsg["Error"] = errors.New("error: no file matches hash given")
 	WriteOutJSONMessage(errMsg, w)
 }
 

@@ -41,6 +41,8 @@ This was a small project to create a local file server that I could write an acc
   - Index or Hash
     - Index - int, The index of the file from the list of files in the folder. This uses the initial stored hash of the indexed file to compare against the sha256 hash of the stored data from the indexed file.
     - Hash - string, The sha256 hash of the file. This will see if a file with this hash already exists in the folder.
+- returns json format.
+  - Error - string, Error message for validating file. Empty string means the file was successful in being validated.
 
 ### Features still needed
 - edit file paths to use generic separator so this can work on more than just windows
