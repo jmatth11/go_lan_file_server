@@ -23,7 +23,8 @@ type GetFilesWithAttributes struct {
 	Attributes map[string]string
 }
 
-// SortedAttributeKeys method sorts attributes
+// SortedAttributeKeys method returns a slice of sorted keys of the attributes.
+// @return []string
 func (g *GetFilesWithAttributes) SortedAttributeKeys() []string {
 	sortedKeys := make([]string, len(g.Attributes))
 	i := 0
