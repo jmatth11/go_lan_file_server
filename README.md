@@ -10,6 +10,9 @@ This was a small project to create a local file server that I could write an acc
 - Main.go - the main file; the paths and their logic are defined here.
 - src/sfile/sfile.go - the file that implements the SAVE file format logic and the associated objects and interfaces.
 - src/sfile/sheader.go - imlpements a SimpleHeader object that adheres to the HeaderFormat interface. This object is for very simple uses.
+- src/server/objects.go - file containing all object types needed for the server.
+- src/server/logging.go - file to wrap the log package behind functions for later when I create a custom logger.
+- src/server/handler.go - file containing logic for the server's requests.
 
 ### Current Paths
 #### /post_file - POST request 
