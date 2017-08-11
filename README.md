@@ -7,6 +7,7 @@ A simple implementation of a LAN file server that supports file uploads that can
 This was a small project to create a local file server that I could write an accompanying phone app for to push files(photos and videos mostly) to my computer while I am at my house. The other thing I wanted to allow this program to do was have a feature to allow you to pick back up uploading a file where you left off. I created a simple file format named "SAVE" to keep track of uploaded files and handle the upload resuming feature. The file server in its current state is very simple and generic. I have made it to where you can save header data with the files you upload and you can define the header on the client side. The downside right now is you cannot change from the header format you initially start off with. However, the Header is an interface and you can implement different header logic if you need something else that is not so simple. 
 
 ### The Files
+- build.sh - simple build file to set the GOPATH and build the project.
 - Main.go - the main file; the paths and their logic are defined here.
 - src/sfile/sfile.go - the file that implements the SAVE file format logic and the associated objects and interfaces.
 - src/sfile/sheader.go - imlpements a SimpleHeader object that adheres to the HeaderFormat interface. This object is for very simple uses.
