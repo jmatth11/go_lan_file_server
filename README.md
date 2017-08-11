@@ -43,5 +43,4 @@ This was a small project to create a local file server that I could write an acc
     - Hash - string, The sha256 hash of the file. This will see if a file with this hash already exists in the folder.
 
 ### Features still needed
-- update README to document how to validate file with sha256
 - edit file paths to use generic separator so this can work on more than just windows
