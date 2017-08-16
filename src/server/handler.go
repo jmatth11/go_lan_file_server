@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sfile"
 	"strconv"
 	"strings"
@@ -25,7 +26,7 @@ func CreateTodaysFolder() string {
 	// Grab date
 	year, month, day := time.Now().Date()
 	// format string to desired file name
-	name := fmt.Sprintf("Data\\%d-%d-%d", year, month, day)
+	name := fmt.Sprintf(filepath.Join("Data", "%d-%d-%d"), year, month, day)
 	// check if folder already exists
 	_, err := os.Stat(name)
 	// if it doesn't exist, create it.
@@ -66,14 +67,7 @@ func WriteFile(w http.ResponseWriter, req *http.Request) {
 	}
 	defer req.Body.Close()
 	headerObj := createHeaderObject(data.Attributes)
-	filePath := bytes.NewBufferString(CreateTodaysFolder() + "\\")
-	_, err = filePath.Write(data.ValidateFile)
-	if err != nil {
-		Logln(err.Error())
-		errReturn := map[string]interface{}{"Count": 0, "Error": fmt.Sprintf("Error creating file path for %s; %s", data.ValidateFile, err)}
-		WriteOutJSONMessage(errReturn, w)
-		return
-	}
+	filePath := bytes.NewBufferString(filepath.Join(CreateTodaysFolder(), string(data.ValidateFile)))
 	n, err := sfile.WriteSaveFile(filePath.Bytes(), data.Data, headerObj, data.StartIndex, data.Size)
 	if err != nil {
 		log.Fatal(err)
@@ -109,7 +103,7 @@ func ValidateFile(w http.ResponseWriter, req *http.Request) {
 func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder string, index int) {
 	Logf("validating %d from %s", index, folder)
 	errMsg := map[string]interface{}{"Error": ""}
-	files, err := ioutil.ReadDir("Data\\" + folder)
+	files, err := ioutil.ReadDir(filepath.Join("Data", folder))
 	if err != nil {
 		errMsg["Error"] = err
 		WriteOutJSONMessage(errMsg, w)
@@ -126,7 +120,7 @@ func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder stri
 		WriteOutJSONMessage(errMsg, w)
 		return
 	}
-	splitFilePath := strings.Split(files[index].Name(), "\\")
+	splitFilePath := strings.Split(files[index].Name(), string(os.PathSeparator))
 	correctHash := []byte(splitFilePath[len(splitFilePath)-1])
 	checkHash := sha256.Sum256(saveFileObj.Data)
 	if bytes.Compare(correctHash, checkHash[:]) == 0 {
@@ -141,7 +135,7 @@ func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder stri
 func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash string) {
 	Logf("validating %s from %s", hash, folder)
 	errMsg := map[string]interface{}{"Error": ""}
-	saveFileObj, err := sfile.ReadSaveFile([]byte("Data\\"+folder+hash), nil)
+	saveFileObj, err := sfile.ReadSaveFile([]byte(filepath.Join("Data", folder, hash)), nil)
 	if err != nil {
 		errMsg["Error"] = err
 		WriteOutJSONMessage(errMsg, w)
@@ -161,7 +155,7 @@ func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash
 func GetFolders(w http.ResponseWriter, req *http.Request) {
 	LogServerCall(req, "GetFolders")
 	// Grab all folders in Data directory
-	foldersFromDir, err := ioutil.ReadDir("Data\\.")
+	foldersFromDir, err := ioutil.ReadDir("Data")
 	if err != nil {
 		LogFatal(err.Error())
 		errFolders := FoldersList{Error: "ERROR: Could not read Data directory."}
@@ -173,7 +167,7 @@ func GetFolders(w http.ResponseWriter, req *http.Request) {
 	// Grab all folder info
 	for _, obj := range foldersFromDir {
 		// Grab files in folder
-		subFiles, err := ioutil.ReadDir("Data\\" + obj.Name() + "\\.")
+		subFiles, err := ioutil.ReadDir(filepath.Join("Data", obj.Name(), "."))
 		if err != nil {
 			LogFatal(err.Error())
 		}
@@ -203,7 +197,7 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	// get list of files from folder
-	files, err := ioutil.ReadDir("Data\\" + data.Folder)
+	files, err := ioutil.ReadDir(filepath.Join("Data", data.Folder))
 	if err != nil {
 		log.Fatal(err)
 		errFiles := FileDataList{Error: "ERROR: Folder given could not be opened. Folder: " + data.Folder}
@@ -228,7 +222,7 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 			data.Attributes[v] = headerMap[i]
 		}
 		// Split on path separator to grab file hash
-		validFile := strings.Split(obj.Name(), "\\")
+		validFile := strings.Split(obj.Name(), string(os.PathSeparator))
 		// base64 encode file hash
 		dstValid := make([]byte, base64.StdEncoding.EncodedLen(len(validFile[len(validFile)-1])))
 		base64.StdEncoding.Encode(dstValid, []byte(validFile[len(validFile)-1]))
