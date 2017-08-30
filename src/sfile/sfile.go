@@ -115,14 +115,14 @@ func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat, lastPos int, size int64) (int, error) {
 	log.Printf("accessing file for write: %s", string(fileName))
 	_, fileAlreadyExists := os.Stat(string(fileName))
-	log.Println("FileName to create:", string(fileName))
-	fileObj, err := os.OpenFile(string(fileName), os.O_RDWR|os.O_CREATE, 0666)
+	fileObj, err := os.OpenFile(string(fileName), os.O_RDWR|os.O_CREATE, 0777)
 	newPos := 0
 	if err != nil {
 		return 0, err
 	}
 	defer fileObj.Close()
 	if fileAlreadyExists != nil {
+		log.Println("FileName to create:", string(fileName))
 		saveFile := bytes.NewBuffer([]byte(""))
 		saveFile.WriteString("SAVE")
 		headerSize, err := head.GetHeaderSize()

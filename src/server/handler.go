@@ -20,19 +20,21 @@ import (
 	"time"
 )
 
+var RootPath string = "Data"
+
 // CreateTodaysFolder is a method to create a folder with the current date as its name.
 // @return string  The folder path
 func CreateTodaysFolder() string {
 	// Grab date
 	year, month, day := time.Now().Date()
 	// format string to desired file name
-	name := fmt.Sprintf(filepath.Join("Data", "%d-%d-%d"), year, month, day)
+	name := fmt.Sprintf(filepath.Join(RootPath, "%d-%d-%d"), year, month, day)
 	// check if folder already exists
 	_, err := os.Stat(name)
 	// if it doesn't exist, create it.
 	if err != nil {
 		Logf("Created folder %s", name)
-		os.Mkdir(name, 0666)
+		os.Mkdir(name, 0777)
 	}
 	return name
 }
@@ -103,7 +105,7 @@ func ValidateFile(w http.ResponseWriter, req *http.Request) {
 func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder string, index int) {
 	Logf("validating %d from %s", index, folder)
 	errMsg := map[string]interface{}{"Error": ""}
-	files, err := ioutil.ReadDir(filepath.Join("Data", folder))
+	files, err := ioutil.ReadDir(filepath.Join(RootPath, folder))
 	if err != nil {
 		errMsg["Error"] = err
 		WriteOutJSONMessage(errMsg, w)
@@ -135,7 +137,7 @@ func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder stri
 func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash string) {
 	Logf("validating %s from %s", hash, folder)
 	errMsg := map[string]interface{}{"Error": ""}
-	saveFileObj, err := sfile.ReadSaveFile([]byte(filepath.Join("Data", folder, hash)), nil)
+	saveFileObj, err := sfile.ReadSaveFile([]byte(filepath.Join(RootPath, folder, hash)), nil)
 	if err != nil {
 		errMsg["Error"] = err
 		WriteOutJSONMessage(errMsg, w)
@@ -155,7 +157,7 @@ func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash
 func GetFolders(w http.ResponseWriter, req *http.Request) {
 	LogServerCall(req, "GetFolders")
 	// Grab all folders in Data directory
-	foldersFromDir, err := ioutil.ReadDir("Data")
+	foldersFromDir, err := ioutil.ReadDir(RootPath)
 	if err != nil {
 		LogFatal(err.Error())
 		errFolders := FoldersList{Error: "ERROR: Could not read Data directory."}
@@ -167,7 +169,7 @@ func GetFolders(w http.ResponseWriter, req *http.Request) {
 	// Grab all folder info
 	for _, obj := range foldersFromDir {
 		// Grab files in folder
-		subFiles, err := ioutil.ReadDir(filepath.Join("Data", obj.Name(), "."))
+		subFiles, err := ioutil.ReadDir(filepath.Join(RootPath, obj.Name(), "."))
 		if err != nil {
 			LogFatal(err.Error())
 		}
@@ -197,7 +199,7 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	// get list of files from folder
-	files, err := ioutil.ReadDir(filepath.Join("Data", data.Folder))
+	files, err := ioutil.ReadDir(filepath.Join(RootPath, data.Folder))
 	if err != nil {
 		log.Fatal(err)
 		errFiles := FileDataList{Error: "ERROR: Folder given could not be opened. Folder: " + data.Folder}

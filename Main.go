@@ -37,10 +37,13 @@ func PingServ(w http.ResponseWriter, req *http.Request) {
 func main() {
 	// Check if Data Folder exists and if not, create it.
 	server.Logln("starting up server on port :8080")
-	_, err := os.Stat("Data")
+	if len(os.Args) > 1 {
+		server.RootPath = os.Args[1]
+	}
+	_, err := os.Stat(server.RootPath)
 	if err != nil {
 		server.Logln("creating Initial Data folder")
-		os.Mkdir("Data", 0666)
+		os.Mkdir(server.RootPath, 0777)
 	}
 	// register functions
 	http.HandleFunc("/ping", PingServ)
