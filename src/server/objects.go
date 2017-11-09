@@ -4,6 +4,12 @@ package server
 
 import "sort"
 
+// Response is json wrapper for all objects to be sent back to user
+type Response struct {
+	Data  interface{}
+	Error string
+}
+
 // FileData is an object that represents all the data we store for a file saved
 type FileData struct {
 	Data         []byte
@@ -39,13 +45,11 @@ func (g *GetFilesWithAttributes) SortedAttributeKeys() []string {
 // FileDataList is an object to store a list of FileData objects
 type FileDataList struct {
 	Files []FileData
-	Error string
 }
 
 // FoldersList is an object to store a list of Folder objects
 type FoldersList struct {
 	Folders []Folder
-	Error   string
 }
 
 // Folder is an object to store the name of the folder and the count of files it holds

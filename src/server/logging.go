@@ -23,6 +23,9 @@ func WriteOutJSONMessage(obj interface{}, w http.ResponseWriter) {
 	b, err := json.Marshal(obj)
 	if err != nil {
 		log.Fatal(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write("error returning correct response")
+		return
 	}
 	log.Printf("writeOutJSONMessage: %s", string(b))
 	w.Write(b)

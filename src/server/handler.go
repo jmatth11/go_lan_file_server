@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var rootPath string = "Data"
+var rootPath = "Data"
 
 func New(rootDir string) http.Handler {
 	mux := http.NewServeMux()
@@ -106,6 +106,12 @@ func PingServ(w http.ResponseWriter, req *http.Request) {
 
 // WriteFile is a method to handle post request for a file to be saved to the
 func WriteFile(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		response := Response{Error: "Only POST method allowed."}
+		WriteOutJSONMessage(response, w)
+		return
+	}
 	LogServerCall(req, "WriteFile")
 	// create json decoder
 	decoder := json.NewDecoder(req.Body)
@@ -113,6 +119,10 @@ func WriteFile(w http.ResponseWriter, req *http.Request) {
 	err := decoder.Decode(&data)
 	if err != nil {
 		LoglnArgs("Post File Error:", err)
+		response := Response{Error: "error parsing request body"}
+		w.WriteHeader(http.StatusBadRequest)
+		WriteOutJSONMessage(response, w)
+		return
 	}
 	defer req.Body.Close()
 	headerObj := createHeaderObject(data.Attributes)
@@ -131,6 +141,12 @@ func WriteFile(w http.ResponseWriter, req *http.Request) {
 // ValidateFile is a GET request that takes in a file hash and checks to see
 // if that file exists on the server as a whole.
 func ValidateFile(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		response := Response{Error: "Only GET method allowed."}
+		WriteOutJSONMessage(response, w)
+		return
+	}
 	LogServerCall(req, "ValidateFile")
 	errMsg := map[string]interface{}{"Error": "", "Size": 0}
 	folder := req.URL.Query().Get("Folder")
@@ -150,6 +166,7 @@ func ValidateFile(w http.ResponseWriter, req *http.Request) {
 
 //
 func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder string, index int) {
+
 	Logf("validating %d from %s", index, folder)
 	errMsg := map[string]interface{}{"Error": ""}
 	files, err := ioutil.ReadDir(filepath.Join(rootPath, folder))
@@ -202,12 +219,18 @@ func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash
 
 // GetFolders is a method to retrieve the list of folder names in the Data path.
 func GetFolders(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		response := Response{Error: "Only GET method allowed."}
+		WriteOutJSONMessage(response, w)
+		return
+	}
 	LogServerCall(req, "GetFolders")
 	// Grab all folders in Data directory
 	foldersFromDir, err := ioutil.ReadDir(rootPath)
 	if err != nil {
 		LogFatal(err.Error())
-		errFolders := FoldersList{Error: "ERROR: Could not read Data directory."}
+		errFolders := Response{Error: "ERROR: Could not read Data directory."}
 		WriteOutJSONMessage(errFolders, w)
 		return
 	}
@@ -219,29 +242,44 @@ func GetFolders(w http.ResponseWriter, req *http.Request) {
 		subFiles, err := ioutil.ReadDir(filepath.Join(rootPath, obj.Name(), "."))
 		if err != nil {
 			LogFatal(err.Error())
+			response := Response{Error: "error getting folders"}
+			w.WriteHeader(http.StatusInternalServerError)
+			WriteOutJSONMessage(response, w)
+			return
 		}
 		// Create Folder object with its name and its file count
 		f := Folder{Name: obj.Name(), Count: len(subFiles)}
 		folders.Folders = append(folders.Folders, f)
 	}
-	WriteOutJSONMessage(folders, w)
+	response := Response{Data: folders, Error: ""}
+	WriteOutJSONMessage(response, w)
 }
 
 // GetFiles is a method to accept a POST request for a specific folder in the Data path requesting files
 // from startIndex to endIndex(exclusively). Must also send a dictionary with the keys of the attributes you want to extract
 func GetFiles(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		response := Response{Error: "Only POST method allowed."}
+		WriteOutJSONMessage(response, w)
+		return
+	}
 	LogServerCall(req, "GetFiles")
 	decoder := json.NewDecoder(req.Body)
 	var data GetFilesWithAttributes
 	err := decoder.Decode(&data)
 	if err != nil {
 		LoglnArgs("Post File Error:", err)
+		response := Response{Error: "Could not decode the request body properly."}
+		w.WriteHeader(http.StatusBadRequest)
+		WriteOutJSONMessage(response, w)
+		return
 	}
 	defer req.Body.Close()
 	// check if out of range
 	if data.StartIndex > data.EndIndex || data.StartIndex < 0 || data.EndIndex < 0 {
 		LogFatal(fmt.Sprintf("ERROR: folder: %s, startIndex: %d, endIndex: %d", data.Folder, data.StartIndex, data.EndIndex))
-		errFiles := FileDataList{Error: fmt.Sprintf("ERROR: Either start or end index is incorrect. startIndex: %d, endIndex: %d", data.StartIndex, data.EndIndex)}
+		errFiles := Response{Error: fmt.Sprintf("ERROR: Either start or end index is incorrect. startIndex: %d, endIndex: %d", data.StartIndex, data.EndIndex)}
 		WriteOutJSONMessage(errFiles, w)
 		return
 	}
@@ -249,7 +287,7 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 	files, err := ioutil.ReadDir(filepath.Join(rootPath, data.Folder))
 	if err != nil {
 		log.Fatal(err)
-		errFiles := FileDataList{Error: "ERROR: Folder given could not be opened. Folder: " + data.Folder}
+		errFiles := Response{Error: "ERROR: Folder given could not be opened. Folder: " + data.Folder}
 		WriteOutJSONMessage(errFiles, w)
 		return
 	}
@@ -261,6 +299,10 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 		saveFileObj, err := sfile.ReadSaveFile([]byte(obj.Name()), headerObj)
 		if err != nil {
 			log.Fatal(err)
+			response := Response{Error: "Could not read file."}
+			w.WriteHeader(http.StatusInternalServerError)
+			WriteOutJSONMessage(response, w)
+			return
 		}
 		// base64 encode data
 		dstData := make([]byte, base64.StdEncoding.EncodedLen(len(saveFileObj.Data)))
@@ -279,5 +321,6 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 		f := FileData{Data: dstData, Size: int64(saveFileObj.Size), StartIndex: 0, ValidateFile: dstValid, Attributes: data.Attributes}
 		allFiles.Files = append(allFiles.Files, f)
 	}
-	WriteOutJSONMessage(allFiles, w)
+	response := Response{Data: allFiles, Error: ""}
+	WriteOutJSONMessage(response, w)
 }
