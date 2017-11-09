@@ -20,7 +20,54 @@ import (
 	"time"
 )
 
-var RootPath string = "Data"
+var rootPath string = "Data"
+
+func New(rootDir string) http.Handler {
+	mux := http.NewServeMux()
+	if strings.TrimSpace(rootDir) != "" {
+		rootPath = rootDir
+	}
+	_, err := os.Stat(rootPath)
+	if err != nil {
+		Logln("creating Initial Data folder")
+		os.Mkdir(rootPath, 0777)
+	}
+	// register functions
+	mux.HandleFunc("/ping", pingServ)
+	mux.HandleFunc("/post_file", postFile)
+	mux.HandleFunc("/get_folders", getFolders)
+	mux.HandleFunc("/get_files", getFiles)
+	mux.HandleFunc("/validate_file", validateFile)
+	return mux
+}
+
+// PostFile is a method to handle post request for a file to be saved to the server.
+func postFile(w http.ResponseWriter, req *http.Request) {
+	WriteFile(w, req)
+}
+
+// GetFolders is a method to retrieve the list of folder names in the Data path.
+func getFolders(w http.ResponseWriter, req *http.Request) {
+	GetFolders(w, req)
+}
+
+// GetFiles is a method to accept a POST request for a specific folder in the Data path requesting files
+// from startIndex to endIndex(exclusively). Must also send a dictionary with the keys of the attributes you want to extract
+func getFiles(w http.ResponseWriter, req *http.Request) {
+	GetFiles(w, req)
+}
+
+// ValidateFile is a GET request that takes in a file hash and checks to see
+// if that file exists on the server as a whole.
+func validateFile(w http.ResponseWriter, req *http.Request) {
+	ValidateFile(w, req)
+}
+
+// PingServ method listens for any message and sends back a response that lets
+// the user know it is hitting the right address.
+func pingServ(w http.ResponseWriter, req *http.Request) {
+	PingServ(w, req)
+}
 
 // CreateTodaysFolder is a method to create a folder with the current date as its name.
 // @return string  The folder path
@@ -28,7 +75,7 @@ func CreateTodaysFolder() string {
 	// Grab date
 	year, month, day := time.Now().Date()
 	// format string to desired file name
-	name := fmt.Sprintf(filepath.Join(RootPath, "%d-%d-%d"), year, month, day)
+	name := fmt.Sprintf(filepath.Join(rootPath, "%d-%d-%d"), year, month, day)
 	// check if folder already exists
 	_, err := os.Stat(name)
 	// if it doesn't exist, create it.
@@ -105,7 +152,7 @@ func ValidateFile(w http.ResponseWriter, req *http.Request) {
 func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder string, index int) {
 	Logf("validating %d from %s", index, folder)
 	errMsg := map[string]interface{}{"Error": ""}
-	files, err := ioutil.ReadDir(filepath.Join(RootPath, folder))
+	files, err := ioutil.ReadDir(filepath.Join(rootPath, folder))
 	if err != nil {
 		errMsg["Error"] = err
 		WriteOutJSONMessage(errMsg, w)
@@ -137,7 +184,7 @@ func validateFileWithIndex(w http.ResponseWriter, req *http.Request, folder stri
 func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash string) {
 	Logf("validating %s from %s", hash, folder)
 	errMsg := map[string]interface{}{"Error": ""}
-	saveFileObj, err := sfile.ReadSaveFile([]byte(filepath.Join(RootPath, folder, hash)), nil)
+	saveFileObj, err := sfile.ReadSaveFile([]byte(filepath.Join(rootPath, folder, hash)), nil)
 	if err != nil {
 		errMsg["Error"] = err
 		WriteOutJSONMessage(errMsg, w)
@@ -157,7 +204,7 @@ func validateFileWithHash(w http.ResponseWriter, req *http.Request, folder, hash
 func GetFolders(w http.ResponseWriter, req *http.Request) {
 	LogServerCall(req, "GetFolders")
 	// Grab all folders in Data directory
-	foldersFromDir, err := ioutil.ReadDir(RootPath)
+	foldersFromDir, err := ioutil.ReadDir(rootPath)
 	if err != nil {
 		LogFatal(err.Error())
 		errFolders := FoldersList{Error: "ERROR: Could not read Data directory."}
@@ -169,7 +216,7 @@ func GetFolders(w http.ResponseWriter, req *http.Request) {
 	// Grab all folder info
 	for _, obj := range foldersFromDir {
 		// Grab files in folder
-		subFiles, err := ioutil.ReadDir(filepath.Join(RootPath, obj.Name(), "."))
+		subFiles, err := ioutil.ReadDir(filepath.Join(rootPath, obj.Name(), "."))
 		if err != nil {
 			LogFatal(err.Error())
 		}
@@ -199,7 +246,7 @@ func GetFiles(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	// get list of files from folder
-	files, err := ioutil.ReadDir(filepath.Join(RootPath, data.Folder))
+	files, err := ioutil.ReadDir(filepath.Join(rootPath, data.Folder))
 	if err != nil {
 		log.Fatal(err)
 		errFiles := FileDataList{Error: "ERROR: Folder given could not be opened. Folder: " + data.Folder}
