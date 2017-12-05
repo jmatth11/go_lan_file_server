@@ -1,27 +1,20 @@
-package sfile
+package saver
 
 import (
 	"bytes"
 	"io"
 	"os"
+	"sfile"
 )
 
 const (
 	headerAppend = "-Header"
 )
 
-// SWriter interface contains methods to save data and header files.
-type SWriter interface {
-	// SaveData is used to save a block of data from a certain position.
-	SaveData(data []byte, pos int64) (int64, error)
-
-	// SaveHeader is used to save header attributes.
-	SaveHeader(data map[string]interface{}) error
-}
-
 // FileWriter object for saving a data file and its associated header attribute file.
 // on a file system.
 type FileWriter struct {
+	SReaderWriter
 	dataFile   *os.File // main data file
 	headerFile *os.File // file for header attributes
 	io.Closer           // conform to io.Closer interface
@@ -58,6 +51,23 @@ func grabFilesForWrite(fileName []byte) (*os.File, *os.File, error) {
 	return file1, file2, nil
 }
 
+func (fw *FileWriter) Write(data *sfile.SaveFile, pos int64) (newPos int64, err error) {
+	newPos, err = saveDataFile(data, pos)
+	if err != nil {
+		return
+	}
+	err = saveHeaderFile(data)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (fw *FileWriter) Read(data *sfile.SaveFile) error {
+	// TODO
+	return nil
+}
+
 // Close handles closing the FileWriter's internal objects.
 // @return error
 func (fw *FileWriter) Close() error {
@@ -67,4 +77,27 @@ func (fw *FileWriter) Close() error {
 	}
 	err = fw.headerFile.Close()
 	return err
+}
+
+func fileExists(filename string) bool {
+	if _, err := os.Stat(string(fileName)); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
+func saveDataFile(data *sfile.SaveFile, pos int64) (int64, error) {
+	dataFile := string(data.FileHash)
+	if fileExists(dataFile) {
+		// TODO
+	}
+	return 0, nil
+}
+
+func saveHeaderFile(data *sfile.SaveFile) error {
+	headerFile := string(data.FileHash) + headerAppend
+	if fileExists(headerFile) {
+		// TODO
+	}
+	return nil
 }
