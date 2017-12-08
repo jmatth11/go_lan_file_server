@@ -52,6 +52,7 @@ type SaveFile struct {
 // that can be sent as json to user.
 func ReadSaveFile(fileName []byte, head HeaderFormat) (*SaveFile, error) {
 	log.Printf("accessing file for read: %s", string(fileName))
+	//!!! broken now because I change the struct signature !!!!
 	sf := &SaveFile{Data: []byte{}, FileHash: fileName, Size: 0, Header: head}
 	fileNameStr := string(fileName)
 	improperFileFormat := errors.New("error: file not formatted properly")
@@ -153,7 +154,7 @@ func WriteSaveFile(fileName []byte, data []byte, head HeaderFormat, lastPos int,
 		}
 	} else {
 		fileData := make([]byte, 4)
-		// grab header size
+		// grab header size starting at position 4 skipping "SAVE" marker
 		_, err = fileObj.ReadAt(fileData, 4)
 		if err != nil {
 			return 0, err

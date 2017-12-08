@@ -2,7 +2,10 @@ package saver
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
+	"log"
 	"os"
 	"sfile"
 )
@@ -86,18 +89,71 @@ func fileExists(filename string) bool {
 	return true
 }
 
-func saveDataFile(data *sfile.SaveFile, pos int64) (int64, error) {
+func saveDataFile(data *sfile.SaveFile, lastPos, pos int64) (int64, error) {
 	dataFile := string(data.FileHash)
-	if fileExists(dataFile) {
-		// TODO
+	fileObj, err := os.OpenFile(dateFile, os.O_RDWR|os.O_CREATE, 0777)
+	newPos := 0
+	if err != nil {
+		return 0, err
 	}
-	return 0, nil
+	defer fileObj.Close()
+	if fileExists(dataFile) {
+		fileData := make([]byte, 4)
+		offset := 4
+		// grab header size starting at position 4 skipping "SAVE" marker
+		_, err = fileObj.ReadAt(fileData, offset)
+		if err != nil {
+			return 0, err
+		}
+		origSize := bytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
+		if int64(origSize) == data.Size {
+			errMsg := fmt.Sprintf("error: the size of the data matches the size of the original file. The Entire file should already exist.")
+			return 0, errors.New(errMsg)
+		}
+		// don't know if I want to allow out of order block writes yet.
+		if origSize != lastPos {
+			errMsg := fmt.Sprintf("error: last received index was %d; current received index was %d", origSize, lastPos)
+			return origSize, errors.New(errMsg)
+		}
+		newDataSize := origSize + len(data.Data)
+		newPos = newDataSize
+		_, err = fileObj.WriteAt(intToBytes(newDataSize), int64(offset))
+		offset += 4
+		if err != nil {
+			return 0, err
+		}
+		_, err = fileObj.WriteAt(data.Data, int64(offset+origSize))
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		log.Println("FileName to create:", dataFile)
+		saveFile := bytes.NewBuffer([]byte(""))
+		saveFile.WriteString("SAVE")
+		dataSize := len(data.Data)
+		newPos = dataSize
+		saveFile.Write(intToBytes(dataSize))
+		// Truncate file so that the file is created at the correct size.
+		// This is beneficial when doing multiupload
+		err = fileObj.Truncate(int64(saveFile.Len()) + data.Size)
+		if err != nil {
+			return 0, err
+		}
+		saveFile.Write(data.Data)
+		_, err = fileObj.Write(saveFile.Bytes())
+		if err != nil {
+			return 0, err
+		}
+	}
+	return newPos, nil
 }
 
 func saveHeaderFile(data *sfile.SaveFile) error {
 	headerFile := string(data.FileHash) + headerAppend
 	if fileExists(headerFile) {
 		// TODO
+	} else {
+
 	}
 	return nil
 }
