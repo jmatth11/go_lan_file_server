@@ -2,9 +2,11 @@ package saver
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"sfile"
@@ -91,7 +93,7 @@ func fileExists(filename string) bool {
 
 func saveDataFile(data *sfile.SaveFile, lastPos, pos int64) (int64, error) {
 	dataFile := string(data.FileHash)
-	fileObj, err := os.OpenFile(dateFile, os.O_RDWR|os.O_CREATE, 0777)
+	fileObj, err := os.OpenFile(dataFile, os.O_RDWR|os.O_CREATE, 0777)
 	newPos := 0
 	if err != nil {
 		return 0, err
@@ -101,11 +103,11 @@ func saveDataFile(data *sfile.SaveFile, lastPos, pos int64) (int64, error) {
 		fileData := make([]byte, 4)
 		offset := 4
 		// grab header size starting at position 4 skipping "SAVE" marker
-		_, err = fileObj.ReadAt(fileData, offset)
+		_, err = fileObj.ReadAt(fileData, int64(offset))
 		if err != nil {
 			return 0, err
 		}
-		origSize := bytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
+		origSize := sfile.BytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
 		if int64(origSize) == data.Size {
 			errMsg := fmt.Sprintf("error: the size of the data matches the size of the original file. The Entire file should already exist.")
 			return 0, errors.New(errMsg)
@@ -151,9 +153,33 @@ func saveDataFile(data *sfile.SaveFile, lastPos, pos int64) (int64, error) {
 func saveHeaderFile(data *sfile.SaveFile) error {
 	headerFile := string(data.FileHash) + headerAppend
 	if fileExists(headerFile) {
-		// TODO
+		b, err := ioutil.ReadFile(headerFile)
+		if err != nil {
+			return err
+		}
+		origData := make(map[string]interface{})
+		err = json.Unmarshal(b, origData)
+		if err != nil {
+			return err
+		}
+		for k, v := range data.Header {
+			origData[k] = v
+		}
+		b, err = json.Marshal(origData)
+		if err != nil {
+			return err
+		}
+		if err = ioutil.WriteFile(headerFile, b, os.ModePerm); err != nil {
+			return err
+		}
 	} else {
-
+		if b, err := json.Marshal(data.Header); err == nil {
+			if err = ioutil.WriteFile(headerFile, b, os.ModePerm); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 	return nil
 }
