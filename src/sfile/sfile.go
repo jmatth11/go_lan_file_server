@@ -40,6 +40,8 @@ type SaveFile struct {
 	Size int
 	// The Header for the File. Contains Attributes of the file (name, type, etc..)
 	Header map[string]interface{}
+	// The block of data to write/read
+	Block int
 }
 
 // ReadSaveFile is a method to extract data from save file and return a SaveFile object with that data.
