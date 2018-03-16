@@ -1,9 +1,5 @@
 package sfile
 
-import (
-	"io"
-)
-
 func IntToBytes(n int) (a []byte) {
 	a = make([]byte, 4)
 	a[0] = byte(n)
@@ -15,19 +11,6 @@ func IntToBytes(n int) (a []byte) {
 
 func BytesToInt(a, b, c, d byte) int {
 	return int(a) | (int(b) << 8) | (int(c) << 16) | (int(d) << 24)
-}
-
-// HeaderFormat interface for the user to make their header object subscribe to.
-type HeaderFormat interface {
-	// Use Read to grab the header from the user.
-	io.Reader
-	// Use Write to give the user the header to parse through.
-	io.Writer
-	// GetHeader is the function to return the mapping of attributes for the header.
-	// the interface value needs to implement a String method to be stringified.
-	GetHeader() []string
-	// GetHeaderSize is the function to return the size of the header for byte slices
-	GetHeaderSize() (n int, err error)
 }
 
 // SaveFile object helps interact with files in SAVE format.

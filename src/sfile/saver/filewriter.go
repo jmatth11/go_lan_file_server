@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -19,10 +18,8 @@ const (
 // FileWriter object for saving a data file and its associated header attribute file.
 // on a file system.
 type FileWriter struct {
-	SReaderWriter
-	dataFile   *os.File // main data file
-	headerFile *os.File // file for header attributes
-	io.Closer           // conform to io.Closer interface
+	dataFile   *os.File
+	headerFile *os.File
 }
 
 // NewFileWriter creates a new FileWriter object and creates two files based on the
@@ -84,7 +81,7 @@ func (fw *FileWriter) Close() error {
 	return err
 }
 
-func fileExists(filename string) bool {
+func fileExists(fileName string) bool {
 	if _, err := os.Stat(string(fileName)); os.IsNotExist(err) {
 		return false
 	}
@@ -108,11 +105,11 @@ func saveDataFile(data *sfile.SaveFile, lastPos, pos int64) (int64, error) {
 			return 0, err
 		}
 		origSize := sfile.BytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
-		if int64(origSize) == data.Size {
+		if origSize == data.Size {
 			errMsg := fmt.Sprintf("error: the size of the data matches the size of the original file. The Entire file should already exist.")
 			return 0, errors.New(errMsg)
 		}
-		// don't know if I want to allow out of order block writes yet.
+		// TODO don't know if I want to allow out of order block writes yet.
 		if origSize != lastPos {
 			errMsg := fmt.Sprintf("error: last received index was %d; current received index was %d", origSize, lastPos)
 			return origSize, errors.New(errMsg)
