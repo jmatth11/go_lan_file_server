@@ -1,18 +1,5 @@
 package sfile
 
-func IntToBytes(n int) (a []byte) {
-	a = make([]byte, 4)
-	a[0] = byte(n)
-	a[1] = byte(n >> 8)
-	a[2] = byte(n >> 16)
-	a[3] = byte(n >> 24)
-	return
-}
-
-func BytesToInt(a, b, c, d byte) int {
-	return int(a) | (int(b) << 8) | (int(c) << 16) | (int(d) << 24)
-}
-
 // SaveFile object helps interact with files in SAVE format.
 type SaveFile struct {
 	// Actual File Data
@@ -20,11 +7,18 @@ type SaveFile struct {
 	// The Hash of the Data of the file, which is also the name of the file on the server
 	FileHash []byte
 	// The Size of the Data
-	Size int
+	Size int64
 	// The Header for the File. Contains Attributes of the file (name, type, etc..)
-	Header map[string]interface{}
+	Header HeaderFormat
 	// The block of data to write/read
 	Block int
+}
+
+// SaveFileResponse simple struct to represent a response for a user's request
+type SaveFileResponse struct {
+	Error        bool
+	ErrorMessage string
+	BadBlocks    []int
 }
 
 // ReadSaveFile is a method to extract data from save file and return a SaveFile object with that data.

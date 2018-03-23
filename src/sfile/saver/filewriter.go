@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"sfile"
+	"sfile/conversion"
 )
 
 const (
@@ -104,7 +105,7 @@ func saveDataFile(data *sfile.SaveFile, lastPos, pos int64) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		origSize := sfile.BytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
+		origSize := conversion.BytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
 		if origSize == data.Size {
 			errMsg := fmt.Sprintf("error: the size of the data matches the size of the original file. The Entire file should already exist.")
 			return 0, errors.New(errMsg)
@@ -116,7 +117,7 @@ func saveDataFile(data *sfile.SaveFile, lastPos, pos int64) (int64, error) {
 		}
 		newDataSize := origSize + len(data.Data)
 		newPos = newDataSize
-		_, err = fileObj.WriteAt(intToBytes(newDataSize), int64(offset))
+		_, err = fileObj.WriteAt(conversion.IntToBytes(newDataSize), int64(offset))
 		offset += 4
 		if err != nil {
 			return 0, err
@@ -131,7 +132,7 @@ func saveDataFile(data *sfile.SaveFile, lastPos, pos int64) (int64, error) {
 		saveFile.WriteString("SAVE")
 		dataSize := len(data.Data)
 		newPos = dataSize
-		saveFile.Write(intToBytes(dataSize))
+		saveFile.Write(conversion.IntToBytes(dataSize))
 		// Truncate file so that the file is created at the correct size.
 		// This is beneficial when doing multiupload
 		err = fileObj.Truncate(int64(saveFile.Len()) + data.Size)
