@@ -7,13 +7,16 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"sfile"
 	"sfile/conversion"
 )
 
 const (
-	headerAppend = "-Header"
+	headerAppend  = "-Header"
+	BLOCK_SIZE    = 2000000      // 2MB
+	MAX_FILE_SIZE = 128000000000 // 128GB but can change if expecting large video files
 )
 
 // FileWriter object for saving a data file and its associated header attribute file.
@@ -54,20 +57,54 @@ func grabFilesForWrite(fileName []byte) (*os.File, *os.File, error) {
 	return file1, file2, nil
 }
 
-func (fw *FileWriter) Write(data *sfile.SaveFile, pos int64) (newPos int64, err error) {
-	newPos, err = saveDataFile(data, pos)
-	if err != nil {
-		return
+// Create takes a SaveFile object and creates the header and data files needed
+func (fw *FileWriter) Create(data *sfile.SaveFile) error {
+	if err := fw.createHeader(data.Header); err != nil {
+		return err
 	}
-	err = saveHeaderFile(data)
-	if err != nil {
-		return
+	if err := fw.createDataFile(data); err != nil {
+		os.Remove(fw.headerFile.Name())
+		return err
 	}
-	return
+	return nil
 }
 
-func (fw *FileWriter) Read(data *sfile.SaveFile) error {
-	// TODO
+func (fw *FileWriter) createHeader(header sfile.HeaderFormat) error {
+	if b, err := json.Marshal(header); err == nil {
+		if _, err = fw.headerFile.Write(b); err != nil {
+			return err
+		}
+	} else {
+		return err
+	}
+	return nil
+}
+
+func (fw *FileWriter) createDataFile(data *sfile.SaveFile) error {
+	log.Println("FileName to create:", fw.dataFile.Name())
+	saveFile := bytes.NewBuffer([]byte(""))
+	saveFile.WriteString("SAVE")
+	// block write flags. 0 means not written, 1 means written
+	// maybe need to pass back block count?
+	blockCount := int(math.Ceil(float64(data.Size) / float64(BLOCK_SIZE)))
+	saveFile.Write(conversion.IntToBytes(blockCount))
+	for i := 0; i < blockCount; i++ {
+		saveFile.WriteByte('0')
+	}
+	saveFile.Write(conversion.Int64ToBytes(data.Size))
+	// Truncate file so that the file is created at the correct size.
+	// This is beneficial when doing multiupload
+	truncSize := int64(saveFile.Len()) + data.Size
+	if truncSize > MAX_FILE_SIZE {
+		return errors.New("exceeded max file size allowed")
+	}
+	if err := fw.dataFile.Truncate(truncSize); err != nil {
+		return err
+	}
+	if _, err := fw.dataFile.Write(saveFile.Bytes()); err != nil {
+		os.Remove(fw.dataFile.Name())
+		return err
+	}
 	return nil
 }
 
@@ -171,6 +208,7 @@ func saveHeaderFile(data *sfile.SaveFile) error {
 			return err
 		}
 	} else {
+		// extracted out
 		if b, err := json.Marshal(data.Header); err == nil {
 			if err = ioutil.WriteFile(headerFile, b, os.ModePerm); err != nil {
 				return err
