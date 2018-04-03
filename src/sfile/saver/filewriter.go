@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -14,9 +12,9 @@ import (
 )
 
 const (
-	headerAppend  = "-Header"
-	BLOCK_SIZE    = 2000000      // 2MB
-	MAX_FILE_SIZE = 128000000000 // 128GB but can change if expecting large video files
+	headerAppend = "-Header"
+	blockSize    = 2000000      // 2MB
+	maxFileSize  = 128000000000 // 128GB but can change if expecting large video files
 )
 
 // FileWriter object for saving a data file and its associated header attribute file.
@@ -86,7 +84,7 @@ func (fw *FileWriter) createDataFile(data *sfile.SaveFile) error {
 	saveFile.WriteString("SAVE")
 	// block write flags. 0 means not written, 1 means written
 	// maybe need to pass back block count?
-	blockCount := int(math.Ceil(float64(data.Size) / float64(BLOCK_SIZE)))
+	blockCount := int(math.Ceil(float64(data.Size) / float64(blockSize)))
 	saveFile.Write(conversion.IntToBytes(blockCount))
 	for i := 0; i < blockCount; i++ {
 		saveFile.WriteByte('0')
@@ -95,7 +93,7 @@ func (fw *FileWriter) createDataFile(data *sfile.SaveFile) error {
 	// Truncate file so that the file is created at the correct size.
 	// This is beneficial when doing multiupload
 	truncSize := int64(saveFile.Len()) + data.Size
-	if truncSize > MAX_FILE_SIZE {
+	if truncSize > maxFileSize {
 		return errors.New("exceeded max file size allowed")
 	}
 	if err := fw.dataFile.Truncate(truncSize); err != nil {
@@ -105,6 +103,100 @@ func (fw *FileWriter) createDataFile(data *sfile.SaveFile) error {
 		os.Remove(fw.dataFile.Name())
 		return err
 	}
+	return nil
+}
+
+// Update takes a SaveFile object and updates the contents of the header file and the data file.
+func (fw *FileWriter) Update(data *sfile.SaveFile) error {
+	if err := fw.updateHeader(data.Header); err != nil {
+		return err
+	}
+	if err := fw.updateDataFile(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (fw *FileWriter) updateHeader(header sfile.HeaderFormat) error {
+	fw.headerFile.Seek(0, 0)
+	info, err := fw.headerFile.Stat()
+	if err != nil {
+		return err
+	}
+	origData := make([]byte, info.Size())
+	_, err = fw.headerFile.Read(origData)
+	if err != nil {
+		return err
+	}
+	err = fw.headerFile.Truncate(info.Size())
+	if err != nil {
+		return err
+	}
+	headerMap := make(map[string]interface{})
+	err = json.Unmarshal(origData, headerMap)
+	if err != nil {
+		fw.headerFile.Write(origData)
+		return err
+	}
+	for k, v := range header.Attributes() {
+		headerMap[k] = v
+	}
+	newData, err := json.Marshal(headerMap)
+	if err != nil {
+		fw.headerFile.Write(origData)
+		return err
+	}
+	_, err = fw.headerFile.Write(newData)
+	return err
+}
+
+func (fw *FileWriter) updateDataFile(data *sfile.SaveFile) error {
+	if len(data.Data) > blockSize {
+		return errors.New("Data size is bigger than block allows")
+	}
+	fw.dataFile.Seek(0, 0)
+	fileData := make([]byte, 4)
+	var offset int64 = 4
+	// grab header size starting at position 4 skipping "SAVE" marker
+	_, err := fw.dataFile.ReadAt(fileData, offset)
+	if err != nil {
+		return err
+	}
+	blockFlagSize := conversion.BytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
+	if data.Block > blockFlagSize {
+		return errors.New("block out of range")
+	}
+	offset += 4
+	blockOffset := offset
+	blockFlags := make([]byte, blockFlagSize)
+	_, err = fw.dataFile.ReadAt(blockFlags, offset)
+	if err != nil {
+		return err
+	}
+	offset += int64(blockFlagSize)
+	// jump to block of data in file. 8 is for the data size bytes
+	offset += 8 + int64(data.Block*blockSize)
+	_, err = fw.dataFile.WriteAt(data.Data, offset)
+	if err != nil {
+		return err
+	}
+	blockFlags[data.Block] = 1
+	_, err = fw.dataFile.WriteAt(blockFlags, blockOffset)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Delete SaveFile objects
+func (fw *FileWriter) Delete(data *sfile.SaveFile) error {
+	// TODO
+	return nil
+}
+
+// Read SaveFile object at path
+func (fw *FileWriter) Read(path string) *sfile.SaveFile {
+	// TODO
 	return nil
 }
 
@@ -119,103 +211,14 @@ func (fw *FileWriter) Close() error {
 	return err
 }
 
-func fileExists(fileName string) bool {
-	if _, err := os.Stat(string(fileName)); os.IsNotExist(err) {
-		return false
+// FileExists check if SaveFile exists
+func FileExists(fileName string) bool {
+	exists := false
+	if _, err := os.Stat(string(fileName)); !os.IsNotExist(err) {
+		exists = true
 	}
-	return true
-}
-
-func saveDataFile(data *sfile.SaveFile, lastPos, pos int64) (int64, error) {
-	dataFile := string(data.FileHash)
-	fileObj, err := os.OpenFile(dataFile, os.O_RDWR|os.O_CREATE, 0777)
-	newPos := 0
-	if err != nil {
-		return 0, err
+	if _, err := os.Stat(string(fileName + headerAppend)); !os.IsNotExist(err) {
+		exists = true
 	}
-	defer fileObj.Close()
-	if fileExists(dataFile) {
-		fileData := make([]byte, 4)
-		offset := 4
-		// grab header size starting at position 4 skipping "SAVE" marker
-		_, err = fileObj.ReadAt(fileData, int64(offset))
-		if err != nil {
-			return 0, err
-		}
-		origSize := conversion.BytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
-		if origSize == data.Size {
-			errMsg := fmt.Sprintf("error: the size of the data matches the size of the original file. The Entire file should already exist.")
-			return 0, errors.New(errMsg)
-		}
-		// TODO don't know if I want to allow out of order block writes yet.
-		if origSize != lastPos {
-			errMsg := fmt.Sprintf("error: last received index was %d; current received index was %d", origSize, lastPos)
-			return origSize, errors.New(errMsg)
-		}
-		newDataSize := origSize + len(data.Data)
-		newPos = newDataSize
-		_, err = fileObj.WriteAt(conversion.IntToBytes(newDataSize), int64(offset))
-		offset += 4
-		if err != nil {
-			return 0, err
-		}
-		_, err = fileObj.WriteAt(data.Data, int64(offset+origSize))
-		if err != nil {
-			return 0, err
-		}
-	} else {
-		log.Println("FileName to create:", dataFile)
-		saveFile := bytes.NewBuffer([]byte(""))
-		saveFile.WriteString("SAVE")
-		dataSize := len(data.Data)
-		newPos = dataSize
-		saveFile.Write(conversion.IntToBytes(dataSize))
-		// Truncate file so that the file is created at the correct size.
-		// This is beneficial when doing multiupload
-		err = fileObj.Truncate(int64(saveFile.Len()) + data.Size)
-		if err != nil {
-			return 0, err
-		}
-		saveFile.Write(data.Data)
-		_, err = fileObj.Write(saveFile.Bytes())
-		if err != nil {
-			return 0, err
-		}
-	}
-	return newPos, nil
-}
-
-func saveHeaderFile(data *sfile.SaveFile) error {
-	headerFile := string(data.FileHash) + headerAppend
-	if fileExists(headerFile) {
-		b, err := ioutil.ReadFile(headerFile)
-		if err != nil {
-			return err
-		}
-		origData := make(map[string]interface{})
-		err = json.Unmarshal(b, origData)
-		if err != nil {
-			return err
-		}
-		for k, v := range data.Header {
-			origData[k] = v
-		}
-		b, err = json.Marshal(origData)
-		if err != nil {
-			return err
-		}
-		if err = ioutil.WriteFile(headerFile, b, os.ModePerm); err != nil {
-			return err
-		}
-	} else {
-		// extracted out
-		if b, err := json.Marshal(data.Header); err == nil {
-			if err = ioutil.WriteFile(headerFile, b, os.ModePerm); err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-	}
-	return nil
+	return exists
 }
