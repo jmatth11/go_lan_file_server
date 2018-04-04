@@ -10,10 +10,7 @@ type FileAccessor interface {
 
 	Delete(data *sfile.SaveFile) error
 
-	Read(path string) *sfile.SaveFileResponse
-	// Write is used to save a SaveFile object.
-	//Write(data *sfile.SaveFile, lastPos, pos int64) (int64, error)
+	ReadHeader(data *sfile.SaveFile) error
 
-	// Read
-	//Read(data *sfile.SaveFile) error
+	ReadDataBlock(data *sfile.SaveFile) error
 }

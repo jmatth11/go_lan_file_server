@@ -17,46 +17,45 @@ const (
 	maxFileSize  = 128000000000 // 128GB but can change if expecting large video files
 )
 
-// FileWriter object for saving a data file and its associated header attribute file.
-// on a file system.
+// FileWriter object for creating/updating/deleting/reading a SaveFile object on a file system.
 type FileWriter struct {
 	dataFile   *os.File
 	headerFile *os.File
+	path       string
 }
 
-// NewFileWriter creates a new FileWriter object and creates two files based on the
-// parameter passed in. The main data file will be named the fileName passed in.
-// The header attribute file will be named fileName + "-Header".
-// @param fileName []byte The file name to use.
-// @return (*FileWriter, error)
-func NewFileWriter(fileName []byte) (*FileWriter, error) {
-	f1, f2, err := grabFilesForWrite(fileName)
-	if err != nil {
-		return nil, err
-	}
+// NewFileWriter takes a path to the SaveFile and returns a new pointed FileWriter
+func NewFileWriter(path string) (*FileWriter, error) {
 	return &FileWriter{
-		dataFile:   f1,
-		headerFile: f2,
+		path: path,
 	}, nil
 }
 
 // grabFilesForWrite creates the main data file and the associated header file.
-func grabFilesForWrite(fileName []byte) (*os.File, *os.File, error) {
-	nameBuffer := bytes.NewBuffer(fileName)
+func (fw *FileWriter) grabFilesForWrite(fileName []byte) error {
+	nameBuffer := bytes.NewBufferString(fw.path)
+	nameBuffer.WriteRune(os.PathSeparator)
+	nameBuffer.Write(fileName)
 	file1, err := os.OpenFile(nameBuffer.String(), os.O_RDWR|os.O_CREATE, 0777)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 	nameBuffer.WriteString(headerAppend)
 	file2, err := os.OpenFile(nameBuffer.String(), os.O_RDWR|os.O_CREATE, 0777)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
-	return file1, file2, nil
+	fw.dataFile = file1
+	fw.headerFile = file2
+	return nil
 }
 
 // Create takes a SaveFile object and creates the header and data files needed
 func (fw *FileWriter) Create(data *sfile.SaveFile) error {
+	if err := fw.grabFilesForWrite(data.FileHash); err != nil {
+		return err
+	}
+	defer fw.close()
 	if err := fw.createHeader(data.Header); err != nil {
 		return err
 	}
@@ -108,6 +107,10 @@ func (fw *FileWriter) createDataFile(data *sfile.SaveFile) error {
 
 // Update takes a SaveFile object and updates the contents of the header file and the data file.
 func (fw *FileWriter) Update(data *sfile.SaveFile) error {
+	if err := fw.grabFilesForWrite(data.FileHash); err != nil {
+		return err
+	}
+	defer fw.close()
 	if err := fw.updateHeader(data.Header); err != nil {
 		return err
 	}
@@ -118,32 +121,15 @@ func (fw *FileWriter) Update(data *sfile.SaveFile) error {
 }
 
 func (fw *FileWriter) updateHeader(header sfile.HeaderFormat) error {
-	fw.headerFile.Seek(0, 0)
-	info, err := fw.headerFile.Stat()
+	headerMap, err := fw.readHeader()
 	if err != nil {
-		return err
-	}
-	origData := make([]byte, info.Size())
-	_, err = fw.headerFile.Read(origData)
-	if err != nil {
-		return err
-	}
-	err = fw.headerFile.Truncate(info.Size())
-	if err != nil {
-		return err
-	}
-	headerMap := make(map[string]interface{})
-	err = json.Unmarshal(origData, headerMap)
-	if err != nil {
-		fw.headerFile.Write(origData)
-		return err
+		return nil
 	}
 	for k, v := range header.Attributes() {
 		headerMap[k] = v
 	}
 	newData, err := json.Marshal(headerMap)
 	if err != nil {
-		fw.headerFile.Write(origData)
 		return err
 	}
 	_, err = fw.headerFile.Write(newData)
@@ -154,7 +140,6 @@ func (fw *FileWriter) updateDataFile(data *sfile.SaveFile) error {
 	if len(data.Data) > blockSize {
 		return errors.New("Data size is bigger than block allows")
 	}
-	fw.dataFile.Seek(0, 0)
 	fileData := make([]byte, 4)
 	var offset int64 = 4
 	// grab header size starting at position 4 skipping "SAVE" marker
@@ -190,25 +175,106 @@ func (fw *FileWriter) updateDataFile(data *sfile.SaveFile) error {
 
 // Delete SaveFile objects
 func (fw *FileWriter) Delete(data *sfile.SaveFile) error {
-	// TODO
+	pathBuffer := bytes.NewBufferString(fw.path)
+	pathBuffer.WriteRune(os.PathSeparator)
+	pathBuffer.Write(data.FileHash)
+	if err := os.Remove(pathBuffer.String()); err != nil {
+		return err
+	}
+	pathBuffer.WriteString(headerAppend)
+	if err := os.Remove(pathBuffer.String()); err != nil {
+		return err
+	}
 	return nil
 }
 
-// Read SaveFile object at path
-func (fw *FileWriter) Read(path string) *sfile.SaveFile {
-	// TODO
-	return nil
-}
-
-// Close handles closing the FileWriter's internal objects.
-// @return error
-func (fw *FileWriter) Close() error {
-	err := fw.dataFile.Close()
+// ReadHeader takes a SaveFile object and reads out the header file into the given SaveFile object
+func (fw *FileWriter) ReadHeader(data *sfile.SaveFile) error {
+	if err := fw.grabFilesForWrite(data.FileHash); err != nil {
+		return err
+	}
+	defer fw.close()
+	headerMap, err := fw.readHeader()
 	if err != nil {
 		return err
 	}
+	data.Header = &sfile.SimpleHeader{}
+	data.Header.SetAttributes(headerMap)
+	return nil
+}
+
+func (fw *FileWriter) readHeader() (map[string]interface{}, error) {
+	info, err := fw.headerFile.Stat()
+	if err != nil {
+		return nil, err
+	}
+	origData := make([]byte, info.Size())
+	_, err = fw.headerFile.Read(origData)
+	if err != nil {
+		return nil, err
+	}
+	err = fw.headerFile.Truncate(info.Size())
+	if err != nil {
+		return nil, err
+	}
+	headerMap := make(map[string]interface{})
+	err = json.Unmarshal(origData, headerMap)
+	if err != nil {
+		fw.headerFile.Write(origData)
+		return nil, err
+	}
+	return headerMap, nil
+}
+
+// ReadDataBlock takes in a SaveFile object and reads the block of data specified.
+// This implementation mutates the passed in SaveFile
+func (fw *FileWriter) ReadDataBlock(data *sfile.SaveFile) error {
+	if err := fw.grabFilesForWrite(data.FileHash); err != nil {
+		return err
+	}
+	defer fw.close()
+	if err := fw.readDataFile(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (fw *FileWriter) readDataFile(data *sfile.SaveFile) error {
+	fileData := make([]byte, 4)
+	var offset int64 = 4
+	// grab header size starting at position 4 skipping "SAVE" marker
+	_, err := fw.dataFile.ReadAt(fileData, offset)
+	if err != nil {
+		return err
+	}
+	blockFlagSize := conversion.BytesToInt(fileData[0], fileData[1], fileData[2], fileData[3])
+	if data.Block > blockFlagSize {
+		return errors.New("block out of range")
+	}
+	offset += 4 + int64(blockFlagSize)
+	// jump to block of data in file. 8 is for the data size bytes
+	offset += 8 + int64(data.Block*blockSize)
+	newData := make([]byte, blockSize)
+	_, err = fw.dataFile.ReadAt(newData, offset)
+	if err != nil {
+		return err
+	}
+	data.Data = newData
+	return nil
+}
+
+// close handles closing the FileWriter's internal objects.
+func (fw *FileWriter) close() {
+	err := fw.dataFile.Close()
+	if err == nil {
+		log.Printf("error closing file: %v\n", err)
+	}
 	err = fw.headerFile.Close()
-	return err
+	if err != nil {
+		log.Printf("error closing file: %v\n", err)
+	}
+	fw.dataFile = nil
+	fw.headerFile = nil
 }
 
 // FileExists check if SaveFile exists
