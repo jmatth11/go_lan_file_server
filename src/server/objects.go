@@ -57,3 +57,10 @@ type Folder struct {
 	Name  string
 	Count int
 }
+
+// SaveFileResponse simple struct to represent a response for a user's request
+type SaveFileResponse struct {
+	Error        bool
+	ErrorMessage string
+	BadBlocks    []int
+}

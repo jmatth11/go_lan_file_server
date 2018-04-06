@@ -11,9 +11,7 @@ type FileValidator interface {
 }
 
 // DefaultFileValidator is a simple object that utilizes 256 hash comparisons
-type DefaultFileValidator struct {
-	FileValidator
-}
+type DefaultFileValidator struct{}
 
 // Validate will perform a sha256 hash on the data and compare it against a sha256 hash given.
 func (dv DefaultFileValidator) Validate(data, hash []byte) bool {
