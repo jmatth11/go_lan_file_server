@@ -2,22 +2,41 @@ package server
 
 // objects file to hold types used for the server
 
-import "sort"
-
 // Response is json wrapper for all objects to be sent back to user
 type Response struct {
-	Data  interface{}
-	Error string
+	Data    interface{}
+	Error   string
+	Success bool
 }
 
-// FileData is an object that represents all the data we store for a file saved
-type FileData struct {
-	Data         []byte
-	ValidateFile []byte
-	StartIndex   int
-	Size         int64
+// FileHeader holds information for updating file header info
+type FileHeader struct {
 	Attributes   map[string]string
+	Path         string
+	ValidateFile []byte
 }
+
+// FileInit should be File meta data sent to server/client
+type FileInit struct {
+	FileHeader
+	BlockCount int
+	Size       int64
+}
+
+// FileBlock represents single block of data sent to server/client
+type FileBlock struct {
+	Block        int
+	Data         []byte
+	Path         string
+	ValidateFile []byte
+}
+
+// BadSaveFileResponse simple struct to represent a response for a user's request
+type BadSaveFileResponse struct {
+	Blocks []int
+}
+
+// Not sure if I want to change any of the objects below
 
 // GetFilesWithAttributes is an object to hold the folder you wish to grab files from,
 // the StartIndex and EndIndex of the files you want,
@@ -29,24 +48,6 @@ type GetFilesWithAttributes struct {
 	Attributes map[string]string
 }
 
-// SortedAttributeKeys method returns a slice of sorted keys of the attributes.
-// @return []string
-func (g *GetFilesWithAttributes) SortedAttributeKeys() []string {
-	sortedKeys := make([]string, len(g.Attributes))
-	i := 0
-	for k := range g.Attributes {
-		sortedKeys[i] = k
-		i++
-	}
-	sort.Strings(sortedKeys)
-	return sortedKeys
-}
-
-// FileDataList is an object to store a list of FileData objects
-type FileDataList struct {
-	Files []FileData
-}
-
 // FoldersList is an object to store a list of Folder objects
 type FoldersList struct {
 	Folders []Folder
@@ -56,11 +57,4 @@ type FoldersList struct {
 type Folder struct {
 	Name  string
 	Count int
-}
-
-// SaveFileResponse simple struct to represent a response for a user's request
-type SaveFileResponse struct {
-	Error        bool
-	ErrorMessage string
-	BadBlocks    []int
 }

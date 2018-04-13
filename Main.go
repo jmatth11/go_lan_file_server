@@ -4,19 +4,21 @@ import (
 	"net/http"
 	"os"
 	"server"
+	"server/logger"
 )
 
 func main() {
-	// Check if Data Folder exists and if not, create it.
-	server.Logln("starting up server on port :8080")
+	logger.InitLoggers(os.Stdout, os.Stdout, os.Stdout, os.Stdout)
+	logger.Trace.Println("starting up server on port :8080")
+
 	path := ""
 	if len(os.Args) > 1 {
 		path = os.Args[1]
 	}
 	handler := server.New(path)
 	if err := http.ListenAndServe(":8080", handler); err != http.ErrServerClosed {
-		server.Logf("%v", err)
+		logger.Error.Printf("%v\n", err)
 	} else {
-		server.Logln("server closed")
+		logger.Trace.Println("server closed")
 	}
 }

@@ -14,13 +14,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"server/logger"
 	"sfile"
 	"strconv"
 	"strings"
-	"time"
 )
 
 var rootPath = "Data"
+
+// Practically everything needs to change in this file.
+// might can reuse some code though...
 
 func New(rootDir string) http.Handler {
 	mux := http.NewServeMux()
@@ -71,72 +74,61 @@ func pingServ(w http.ResponseWriter, req *http.Request) {
 
 // CreateTodaysFolder is a method to create a folder with the current date as its name.
 // @return string  The folder path
-func CreateTodaysFolder() string {
-	// Grab date
-	year, month, day := time.Now().Date()
-	// format string to desired file name
-	name := fmt.Sprintf(filepath.Join(rootPath, "%d-%d-%d"), year, month, day)
-	// check if folder already exists
-	_, err := os.Stat(name)
-	// if it doesn't exist, create it.
-	if err != nil {
-		Logf("Created folder %s", name)
-		os.Mkdir(name, 0777)
-	}
-	return name
-}
-
-// createHeaderObject creates a sfile.SimpleHeader object with default attributes
-// @param data FileData object passed in to set the Attribute keys in the SimpleHeader object
-// @return *sfile.SimpleHeader object
-func createHeaderObject(data map[string]string) *sfile.SimpleHeader {
-	headerObj := &sfile.SimpleHeader{Attributes: make(map[string]interface{})}
-	for k, v := range data {
-		headerObj.Attributes[k] = v
-	}
-	return headerObj
-}
+// func CreateTodaysFolder() string {
+// 	// Grab date
+// 	year, month, day := time.Now().Date()
+// 	// format string to desired file name
+// 	name := fmt.Sprintf(filepath.Join(rootPath, "%d-%d-%d"), year, month, day)
+// 	// check if folder already exists
+// 	_, err := os.Stat(name)
+// 	// if it doesn't exist, create it.
+// 	if err != nil {
+// 		//Logf("Created folder %s", name)
+// 		os.Mkdir(name, 0777)
+// 	}
+// 	return name
+// }
 
 // PingServ method listens for any message and sends back a response that lets
 // the user know it is hitting the right address.
 func PingServ(w http.ResponseWriter, req *http.Request) {
-	LogServerCall(req, "PingServ")
+	logger.Trace.ServerCall(req, "PingServ")
 	w.Write([]byte("connected"))
 }
 
 // WriteFile is a method to handle post request for a file to be saved to the
-func WriteFile(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		response := Response{Error: "Only POST method allowed."}
-		WriteOutJSONMessage(response, w)
-		return
-	}
-	LogServerCall(req, "WriteFile")
-	// create json decoder
-	decoder := json.NewDecoder(req.Body)
-	var data FileData
-	err := decoder.Decode(&data)
-	if err != nil {
-		LoglnArgs("Post File Error:", err)
-		response := Response{Error: "error parsing request body"}
-		w.WriteHeader(http.StatusBadRequest)
-		WriteOutJSONMessage(response, w)
-		return
-	}
-	defer req.Body.Close()
-	headerObj := createHeaderObject(data.Attributes)
-	filePath := bytes.NewBufferString(filepath.Join(CreateTodaysFolder(), string(data.ValidateFile)))
-	n, err := sfile.WriteSaveFile(filePath.Bytes(), data.Data, headerObj, data.StartIndex, data.Size)
-	if err != nil {
-		log.Fatal(err)
-		errReturn := map[string]interface{}{"Count": n, "Error": fmt.Sprintf("Error while writing file %s; %s", data.ValidateFile, err)}
-		WriteOutJSONMessage(errReturn, w)
-		return
-	}
-	Logf("File data, Name: %s. Wrote %d bytes", data.ValidateFile, n)
-	WriteOutJSONMessage(map[string]interface{}{"Count": n, "Error": ""}, w)
-}
+// func WriteFile(w http.ResponseWriter, req *http.Request) {
+// 	if req.Method != http.MethodPost {
+// 		w.WriteHeader(http.StatusMethodNotAllowed)
+// 		response := Response{Error: "Only POST method allowed."}
+// 		WriteOutJSONMessage(response, w)
+// 		return
+// 	}
+// 	LogServerCall(req, "WriteFile")
+// 	// create json decoder
+// 	decoder := json.NewDecoder(req.Body)
+// 	var data FileData
+// 	err := decoder.Decode(&data)
+// 	if err != nil {
+// 		LoglnArgs("Post File Error:", err)
+// 		response := Response{Error: "error parsing request body"}
+// 		w.WriteHeader(http.StatusBadRequest)
+// 		WriteOutJSONMessage(response, w)
+// 		return
+// 	}
+// 	defer req.Body.Close()
+// 	headerObj := createHeaderObject(data.Attributes)
+// 	filePath := bytes.NewBufferString(filepath.Join(CreateTodaysFolder(), string(data.ValidateFile)))
+// 	n, err := sfile.WriteSaveFile(filePath.Bytes(), data.Data, headerObj, data.StartIndex, data.Size)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 		errReturn := map[string]interface{}{"Count": n, "Error": fmt.Sprintf("Error while writing file %s; %s", data.ValidateFile, err)}
+// 		WriteOutJSONMessage(errReturn, w)
+// 		return
+// 	}
+// 	Logf("File data, Name: %s. Wrote %d bytes", data.ValidateFile, n)
+// 	WriteOutJSONMessage(map[string]interface{}{"Count": n, "Error": ""}, w)
+// }
 
 // ValidateFile is a GET request that takes in a file hash and checks to see
 // if that file exists on the server as a whole.
@@ -147,7 +139,7 @@ func ValidateFile(w http.ResponseWriter, req *http.Request) {
 		WriteOutJSONMessage(response, w)
 		return
 	}
-	LogServerCall(req, "ValidateFile")
+	logger.Trace.ServerCall(req, "ValidateFile")
 	errMsg := map[string]interface{}{"Error": "", "Size": 0}
 	folder := req.URL.Query().Get("Folder")
 	fileHash := req.URL.Query().Get("Hash")
